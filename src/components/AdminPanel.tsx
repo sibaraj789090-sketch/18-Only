@@ -38,6 +38,7 @@ import {
   resolveMediaUrl,
   fetchCategories,
   resetAdminPassword,
+  DEFAULT_CATEGORIES,
 } from '../lib/supabase';
 import { useToast } from './Toast';
 
@@ -279,12 +280,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setIsSavingVideo(true);
 
+    const matchedCategory = (categories.length > 0 ? categories : DEFAULT_CATEGORIES).find(
+      (c) =>
+        c.name.toLowerCase() === (formCategory || '').toLowerCase() ||
+        String(c.id).toLowerCase() === (formCategory || '').toLowerCase()
+    );
+
     const payload: Partial<Video> = {
       title: formTitle.trim(),
       description: formDescription.trim(),
       video_url: formVideoUrl.trim(),
       thumbnail_url: formThumbnailUrl.trim() || null,
       category: formCategory || 'Entertainment',
+      category_id: matchedCategory ? matchedCategory.id : formCategory,
       duration: formDuration.trim() || undefined,
       is_published: formIsPublished,
       featured: formFeatured,
@@ -1034,8 +1042,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   onChange={(e) => setFormCategory(e.target.value)}
                   className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500"
                 >
-                  {categories.map((c) => (
-                    <option key={c.id || c.name} value={c.name}>
+                  {(categories.length > 0 ? categories : DEFAULT_CATEGORIES).map((c) => (
+                    <option key={String(c.id) + '_' + c.name} value={c.name}>
                       {c.name}
                     </option>
                   ))}

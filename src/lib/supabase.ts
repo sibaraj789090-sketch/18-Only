@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Video, Category, Comment, SupabaseConfig } from '../types/database';
+import { TEMPORARY_DEMO_VIDEO, isDemoVideo } from './demoVideo';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'all', name: 'All' },
@@ -11,6 +12,78 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'music', name: 'Music' },
   { id: 'other', name: 'Other' },
 ];
+
+export let cachedCategories: Category[] = [...DEFAULT_CATEGORIES];
+
+export function findCategoryRecord(identifier?: string | number | Category | null): Category | undefined {
+  if (identifier === undefined || identifier === null) return undefined;
+  if (typeof identifier === 'object' && identifier !== null) {
+    if ('name' in identifier) return identifier as Category;
+  }
+  const str = String(identifier).trim().toLowerCase();
+  return (
+    cachedCategories.find(
+      (c) =>
+        String(c.id).toLowerCase() === str ||
+        c.name.toLowerCase() === str ||
+        (c.slug && c.slug.toLowerCase() === str)
+    ) ||
+    DEFAULT_CATEGORIES.find(
+      (c) =>
+        String(c.id).toLowerCase() === str ||
+        c.name.toLowerCase() === str ||
+        (c.slug && c.slug.toLowerCase() === str)
+    )
+  );
+}
+
+export let cachedColumns: Set<string> | null = null;
+
+export async function getVideosTableColumns(client?: SupabaseClient | null): Promise<Set<string> | null> {
+  if (cachedColumns && cachedColumns.size > 0) return cachedColumns;
+  const supabase = client || getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.from('videos').select('*').limit(1);
+    if (data && data.length > 0 && typeof data[0] === 'object') {
+      cachedColumns = new Set(Object.keys(data[0]));
+      return cachedColumns;
+    }
+  } catch {}
+  return null;
+}
+
+export function normalizeVideo(v: any): Video {
+  if (!v) return v;
+  const rawCat = v.category;
+  const catObj = findCategoryRecord(
+    v.category_id || (typeof rawCat === 'object' ? rawCat?.name : rawCat)
+  );
+  const categoryName =
+    typeof rawCat === 'string' && rawCat.trim()
+      ? rawCat.trim()
+      : catObj
+      ? catObj.name
+      : v.category_id
+      ? String(v.category_id)
+      : 'General';
+
+  return {
+    ...v,
+    id: v.id ?? ('vid_' + Math.random().toString(36).substring(2, 9)),
+    title: v.title || 'Untitled Video',
+    description: v.description || '',
+    video_url: v.video_url || v.url || v.video_path || '',
+    thumbnail_url: v.thumbnail_url || v.thumbnail || v.poster_url || null,
+    category: categoryName,
+    category_id: v.category_id ?? (catObj ? catObj.id : null),
+    views: typeof v.views === 'number' ? v.views : 0,
+    duration: v.duration ? String(v.duration) : '',
+    is_published: v.is_published ?? (v.published ?? true),
+    featured: v.featured ?? false,
+    author_name: v.author_name || v.author || '18+Only Creator',
+  };
+}
 
 const STORAGE_KEY_URL = '18plus_supabase_url';
 const STORAGE_KEY_ANON = '18plus_supabase_anon_key';
@@ -170,9 +243,11 @@ export async function fetchCategories(): Promise<Category[]> {
       .order('name', { ascending: true });
 
     if (error || !data || data.length === 0) {
+      cachedCategories = [...DEFAULT_CATEGORIES];
       return DEFAULT_CATEGORIES;
     }
 
+    cachedCategories = [...data];
     // Ensure 'All' is at the top
     const hasAll = data.some((c) => c.name.toLowerCase() === 'all');
     if (!hasAll) {
@@ -181,6 +256,7 @@ export async function fetchCategories(): Promise<Category[]> {
     return data;
   } catch (err) {
     console.warn('Error fetching categories from Supabase, using defaults:', err);
+    cachedCategories = [...DEFAULT_CATEGORIES];
     return DEFAULT_CATEGORIES;
   }
 }
@@ -204,6 +280,7 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
 
   const limit = options.limit ?? 12;
   const offset = options.offset ?? 0;
+  const cols = await getVideosTableColumns(supabase);
 
   try {
     // Attempt query with is_published filtering
@@ -212,19 +289,34 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
       .select('*', { count: 'exact' });
 
     // Try filtering is_published: true
-    try {
+    if (!cols || cols.has('is_published')) {
       query = query.eq('is_published', true);
-    } catch {
-      // Ignore if not present
+    } else if (cols.has('published')) {
+      query = query.eq('published', true);
     }
 
     if (options.featuredOnly) {
-      query = query.eq('featured', true);
+      if (!cols || cols.has('featured')) {
+        query = query.eq('featured', true);
+      }
     }
 
     if (options.categoryId && options.categoryId !== 'all') {
-      // Match by category_id or category string
-      query = query.or(`category_id.eq.${options.categoryId},category.eq.${options.categoryId}`);
+      const catObj = findCategoryRecord(options.categoryId);
+      const catId = catObj ? catObj.id : options.categoryId;
+      const catName = catObj ? catObj.name : String(options.categoryId);
+
+      if (cols) {
+        if (cols.has('category_id') && cols.has('category')) {
+          query = query.or(`category_id.eq.${catId},category.ilike.%${catName}%`);
+        } else if (cols.has('category_id')) {
+          query = query.eq('category_id', catId);
+        } else if (cols.has('category')) {
+          query = query.ilike('category', `%${catName}%`);
+        }
+      } else {
+        query = query.eq('category_id', catId);
+      }
     }
 
     if (options.searchQuery && options.searchQuery.trim()) {
@@ -232,40 +324,58 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
       query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
     }
 
-    // Latest uploaded videos first as specified
-    query = query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    if (!cols || cols.has('created_at')) {
+      query = query.order('created_at', { ascending: false });
+    }
+    query = query.range(offset, offset + limit - 1);
 
     const { data, error, count } = await query;
 
     if (error) {
-      // If error is about 'is_published' column not existing, retry without it
-      if (error.message?.includes('is_published')) {
-        let retryQuery = supabase
-          .from('videos')
-          .select('*', { count: 'exact' })
-          .order('created_at', { ascending: false })
-          .range(offset, offset + limit - 1);
+      console.warn('Notice: Primary fetchVideos query returned error, applying safe fallback:', error.message);
 
-        if (options.categoryId && options.categoryId !== 'all') {
-          retryQuery = retryQuery.or(`category_id.eq.${options.categoryId},category.eq.${options.categoryId}`);
-        }
-        if (options.searchQuery && options.searchQuery.trim()) {
-          const q = options.searchQuery.trim();
-          retryQuery = retryQuery.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
-        }
-        const retryResult = await retryQuery;
-        if (!retryResult.error && retryResult.data) {
-          return { videos: retryResult.data as Video[], count: retryResult.count ?? retryResult.data.length };
-        }
+      const missingMatch = error.message.match(/Could not find the '([^']+)' column/i);
+      if (missingMatch && missingMatch[1] && cachedColumns) {
+        cachedColumns.delete(missingMatch[1]);
       }
-      console.warn('Notice: Supabase videos query returned:', error.message);
+
+      let retryQuery = supabase
+        .from('videos')
+        .select('*', { count: 'exact' });
+
+      if (options.searchQuery && options.searchQuery.trim()) {
+        const q = options.searchQuery.trim();
+        retryQuery = retryQuery.ilike('title', `%${q}%`);
+      }
+
+      retryQuery = retryQuery.range(offset, offset + limit - 1);
+      const retryResult = await retryQuery;
+
+      if (!retryResult.error && retryResult.data) {
+        if (retryResult.data.length > 0 && typeof retryResult.data[0] === 'object') {
+          cachedColumns = new Set(Object.keys(retryResult.data[0]));
+        }
+        let list = retryResult.data.map(normalizeVideo);
+        if (options.categoryId && options.categoryId !== 'all') {
+          const target = String(options.categoryId).toLowerCase();
+          list = list.filter(
+            (v) =>
+              String(v.category_id).toLowerCase() === target ||
+              (typeof v.category === 'string' && v.category.toLowerCase() === target)
+          );
+        }
+        return { videos: list, count: retryResult.count ?? list.length };
+      }
+
       return { videos: [], count: 0 };
     }
 
+    if (data && data.length > 0 && typeof data[0] === 'object') {
+      cachedColumns = new Set(Object.keys(data[0]));
+    }
+
     return {
-      videos: (data as Video[]) || [],
+      videos: (data || []).map(normalizeVideo),
       count: count ?? (data?.length || 0),
     };
   } catch (err) {
@@ -273,8 +383,6 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
     return { videos: [], count: 0 };
   }
 }
-
-import { TEMPORARY_DEMO_VIDEO, isDemoVideo } from './demoVideo';
 
 /**
  * Fetch a single video by ID
@@ -299,7 +407,7 @@ export async function fetchVideoById(id: string | number): Promise<Video | null>
       return null;
     }
 
-    return data as Video;
+    return normalizeVideo(data);
   } catch (err) {
     console.warn('Notice: fetchVideoById error:', err);
     return null;
@@ -522,6 +630,12 @@ export async function testSupabaseConnection(): Promise<{
       results.tables.videos = { exists: false, error: vErr.message };
     } else {
       results.tables.videos = { exists: true, count: vCount ?? 0 };
+      try {
+        const { data: sampleRow } = await supabase.from('videos').select('*').limit(1);
+        if (sampleRow && sampleRow.length > 0 && typeof sampleRow[0] === 'object') {
+          cachedColumns = new Set(Object.keys(sampleRow[0]));
+        }
+      } catch {}
     }
 
     // 2. Test categories table
@@ -793,17 +907,28 @@ export async function fetchAllAdminVideos(): Promise<Video[]> {
   if (!supabase) return [];
 
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('videos')
       .select('*')
       .order('created_at', { ascending: false });
+
+    if (error) {
+      // Retry without order('created_at') in case created_at column doesn't exist
+      const retry = await supabase.from('videos').select('*');
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error || !data) {
       console.warn('Error fetching admin videos:', error?.message);
       return [];
     }
 
-    return data as Video[];
+    if (data.length > 0 && typeof data[0] === 'object') {
+      cachedColumns = new Set(Object.keys(data[0]));
+    }
+
+    return data.map(normalizeVideo);
   } catch (err) {
     console.warn('Notice: fetchAllAdminVideos error:', err);
     return [];
@@ -815,31 +940,174 @@ export async function createAdminVideo(videoData: Partial<Video>): Promise<{ suc
   if (!supabase) return { success: false, error: 'Database not connected' };
 
   try {
+    const cols = await getVideosTableColumns(supabase);
+    const catObj = findCategoryRecord(videoData.category || videoData.category_id);
+    const catName = typeof videoData.category === 'object'
+      ? videoData.category?.name
+      : (videoData.category || (catObj ? catObj.name : 'Entertainment'));
+    const catId = videoData.category_id ?? (catObj ? catObj.id : null);
+
     const payload: Record<string, any> = {
       title: videoData.title,
-      description: videoData.description || '',
-      video_url: videoData.video_url,
-      thumbnail_url: videoData.thumbnail_url || null,
-      views: videoData.views || 0,
-      duration: videoData.duration || null,
-      category: typeof videoData.category === 'object' ? videoData.category?.name : videoData.category,
-      category_id: videoData.category_id || null,
-      is_published: videoData.is_published ?? true,
-      featured: videoData.featured ?? false,
-      author_name: videoData.author_name || '18+Only Creator',
     };
 
-    const { data, error } = await supabase
-      .from('videos')
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) {
-      return { success: false, error: error.message };
+    if (!cols || cols.has('description')) {
+      payload.description = videoData.description || '';
     }
 
-    return { success: true, video: data as Video };
+    // Video URL mapping (support video_url or url)
+    if (cols && !cols.has('video_url') && cols.has('url')) {
+      payload.url = videoData.video_url;
+    } else {
+      payload.video_url = videoData.video_url;
+    }
+
+    // Thumbnail URL mapping
+    if (cols && !cols.has('thumbnail_url') && cols.has('thumbnail')) {
+      payload.thumbnail = videoData.thumbnail_url || null;
+    } else if (cols && !cols.has('thumbnail_url') && cols.has('poster_url')) {
+      payload.poster_url = videoData.thumbnail_url || null;
+    } else {
+      payload.thumbnail_url = videoData.thumbnail_url || null;
+    }
+
+    // Category handling: if table has category column, include it; if table has category_id, include it
+    if (cols) {
+      if (cols.has('category')) {
+        payload.category = catName;
+      }
+      if (cols.has('category_id') && catId !== null && catId !== undefined) {
+        payload.category_id = catId;
+      }
+    } else {
+      // If schema unknown, start with category_id if available, and category
+      if (catId !== null && catId !== undefined) {
+        payload.category_id = catId;
+      }
+      if (!payload.category_id) {
+        payload.category = catName;
+      }
+    }
+
+    if (!cols || cols.has('views')) {
+      payload.views = videoData.views || 0;
+    }
+
+    if (videoData.duration && (!cols || cols.has('duration'))) {
+      payload.duration = videoData.duration;
+    }
+
+    if (cols && !cols.has('is_published') && cols.has('published')) {
+      payload.published = videoData.is_published ?? true;
+    } else if (!cols || cols.has('is_published')) {
+      payload.is_published = videoData.is_published ?? true;
+    }
+
+    if (!cols || cols.has('featured')) {
+      payload.featured = videoData.featured ?? false;
+    }
+
+    if (cols && !cols.has('author_name') && cols.has('author')) {
+      payload.author = videoData.author_name || '18+Only Creator';
+    } else if (!cols || cols.has('author_name')) {
+      payload.author_name = videoData.author_name || '18+Only Creator';
+    }
+
+    const workingPayload = { ...payload };
+    let attempts = 0;
+    let lastError = 'Failed to create video';
+
+    while (attempts < 15) {
+      attempts++;
+
+      const { data, error } = await supabase
+        .from('videos')
+        .insert([workingPayload])
+        .select();
+
+      if (!error) {
+        if (data && data.length > 0) {
+          cachedColumns = new Set(Object.keys(data[0]));
+          return { success: true, video: normalizeVideo(data[0]) };
+        }
+        return { success: true, video: normalizeVideo(workingPayload) };
+      }
+
+      lastError = error.message;
+
+      // Detect missing column error from PostgREST/Postgres
+      const missingMatch =
+        error.message.match(/Could not find the '([^']+)' column/i) ||
+        error.message.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
+        error.message.match(/column ["']?([^"'\s]+)["']? does not exist/i);
+
+      if (missingMatch && missingMatch[1]) {
+        const missingCol = missingMatch[1].trim();
+        if (cachedColumns) cachedColumns.delete(missingCol);
+        if (missingCol in workingPayload) {
+          delete workingPayload[missingCol];
+
+          // If category was missing, try category_id if available
+          if (missingCol === 'category' && catId && !('category_id' in workingPayload)) {
+            workingPayload.category_id = catId;
+          }
+          if (missingCol === 'video_url' && !('url' in workingPayload)) {
+            workingPayload.url = videoData.video_url;
+          }
+          if (missingCol === 'thumbnail_url' && !('thumbnail' in workingPayload)) {
+            workingPayload.thumbnail = videoData.thumbnail_url;
+          }
+          continue;
+        }
+      }
+
+      // Foreign key error (e.g. on category_id)
+      if (error.message.toLowerCase().includes('foreign key') || error.code === '23503') {
+        if ('category_id' in workingPayload) {
+          delete workingPayload.category_id;
+          continue;
+        }
+      }
+
+      // Integer/UUID syntax error
+      if (
+        error.message.includes('invalid input syntax for type integer') ||
+        error.message.includes('invalid input syntax for type uuid')
+      ) {
+        if ('category_id' in workingPayload) {
+          const num = parseInt(String(workingPayload.category_id), 10);
+          if (!isNaN(num) && typeof workingPayload.category_id !== 'number') {
+            workingPayload.category_id = num;
+          } else {
+            delete workingPayload.category_id;
+          }
+          continue;
+        }
+        if ('duration' in workingPayload) {
+          delete workingPayload.duration;
+          continue;
+        }
+      }
+
+      // RLS error on select
+      if (
+        error.message.includes('row-level security') ||
+        error.code === '42501' ||
+        error.code === 'PGRST116'
+      ) {
+        const plainInsert = await supabase.from('videos').insert([workingPayload]);
+        if (!plainInsert.error) {
+          return {
+            success: true,
+            video: normalizeVideo({ ...workingPayload, id: 'vid_' + Date.now() }),
+          };
+        }
+      }
+
+      break;
+    }
+
+    return { success: false, error: lastError };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to create video';
     return { success: false, error: message };
@@ -851,29 +1119,125 @@ export async function updateAdminVideo(id: string | number, videoData: Partial<V
   if (!supabase) return { success: false, error: 'Database not connected' };
 
   try {
+    const cols = await getVideosTableColumns(supabase);
+    const catObj = findCategoryRecord(videoData.category || videoData.category_id);
+    const catName = typeof videoData.category === 'object'
+      ? videoData.category?.name
+      : (videoData.category || (catObj ? catObj.name : undefined));
+    const catId = videoData.category_id ?? (catObj ? catObj.id : undefined);
+
     const payload: Record<string, any> = {};
     if (videoData.title !== undefined) payload.title = videoData.title;
-    if (videoData.description !== undefined) payload.description = videoData.description;
-    if (videoData.video_url !== undefined) payload.video_url = videoData.video_url;
-    if (videoData.thumbnail_url !== undefined) payload.thumbnail_url = videoData.thumbnail_url;
-    if (videoData.duration !== undefined) payload.duration = videoData.duration;
-    if (videoData.category !== undefined) {
-      payload.category = typeof videoData.category === 'object' ? videoData.category?.name : videoData.category;
-    }
-    if (videoData.category_id !== undefined) payload.category_id = videoData.category_id;
-    if (videoData.is_published !== undefined) payload.is_published = videoData.is_published;
-    if (videoData.featured !== undefined) payload.featured = videoData.featured;
-
-    const { error } = await supabase
-      .from('videos')
-      .update(payload)
-      .eq('id', id);
-
-    if (error) {
-      return { success: false, error: error.message };
+    if (videoData.description !== undefined && (!cols || cols.has('description'))) {
+      payload.description = videoData.description;
     }
 
-    return { success: true };
+    if (videoData.video_url !== undefined) {
+      if (cols && !cols.has('video_url') && cols.has('url')) {
+        payload.url = videoData.video_url;
+      } else {
+        payload.video_url = videoData.video_url;
+      }
+    }
+
+    if (videoData.thumbnail_url !== undefined) {
+      if (cols && !cols.has('thumbnail_url') && cols.has('thumbnail')) {
+        payload.thumbnail = videoData.thumbnail_url;
+      } else if (cols && !cols.has('thumbnail_url') && cols.has('poster_url')) {
+        payload.poster_url = videoData.thumbnail_url;
+      } else {
+        payload.thumbnail_url = videoData.thumbnail_url;
+      }
+    }
+
+    if (videoData.duration !== undefined && (!cols || cols.has('duration'))) {
+      payload.duration = videoData.duration;
+    }
+
+    if (videoData.category !== undefined || videoData.category_id !== undefined) {
+      if (cols) {
+        if (cols.has('category') && catName) {
+          payload.category = catName;
+        }
+        if (cols.has('category_id') && catId !== undefined) {
+          payload.category_id = catId;
+        }
+      } else {
+        if (catId !== undefined && catId !== null) {
+          payload.category_id = catId;
+        } else if (catName) {
+          payload.category = catName;
+        }
+      }
+    }
+
+    if (videoData.is_published !== undefined) {
+      if (cols && !cols.has('is_published') && cols.has('published')) {
+        payload.published = videoData.is_published;
+      } else if (!cols || cols.has('is_published')) {
+        payload.is_published = videoData.is_published;
+      }
+    }
+
+    if (videoData.featured !== undefined && (!cols || cols.has('featured'))) {
+      payload.featured = videoData.featured;
+    }
+
+    const workingPayload = { ...payload };
+    let attempts = 0;
+    let lastError = 'Failed to update video';
+
+    while (attempts < 15) {
+      attempts++;
+      const { error } = await supabase
+        .from('videos')
+        .update(workingPayload)
+        .eq('id', id);
+
+      if (!error) {
+        return { success: true };
+      }
+
+      lastError = error.message;
+
+      const missingMatch =
+        error.message.match(/Could not find the '([^']+)' column/i) ||
+        error.message.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
+        error.message.match(/column ["']?([^"'\s]+)["']? does not exist/i);
+
+      if (missingMatch && missingMatch[1]) {
+        const missingCol = missingMatch[1].trim();
+        if (cachedColumns) cachedColumns.delete(missingCol);
+        if (missingCol in workingPayload) {
+          delete workingPayload[missingCol];
+          if (missingCol === 'category' && catId && !('category_id' in workingPayload)) {
+            workingPayload.category_id = catId;
+          }
+          continue;
+        }
+      }
+
+      if (error.message.toLowerCase().includes('foreign key') || error.code === '23503') {
+        if ('category_id' in workingPayload) {
+          delete workingPayload.category_id;
+          continue;
+        }
+      }
+
+      if (
+        error.message.includes('invalid input syntax for type integer') ||
+        error.message.includes('invalid input syntax for type uuid')
+      ) {
+        if ('category_id' in workingPayload) {
+          delete workingPayload.category_id;
+          continue;
+        }
+      }
+
+      break;
+    }
+
+    return { success: false, error: lastError };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update video';
     return { success: false, error: message };
@@ -907,13 +1271,26 @@ export async function createAdminCategory(name: string, slug?: string): Promise<
 
   try {
     const cleanSlug = slug?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('categories')
       .insert([{ name: name.trim(), slug: cleanSlug }])
       .select()
       .single();
 
+    if (error && (error.message?.includes('slug') || error.message?.includes('schema cache'))) {
+      const retry = await supabase
+        .from('categories')
+        .insert([{ name: name.trim() }])
+        .select()
+        .single();
+      if (!retry.error && retry.data) {
+        cachedCategories.push(retry.data as Category);
+        return { success: true, category: retry.data as Category };
+      }
+    }
+
     if (error) return { success: false, error: error.message };
+    if (data) cachedCategories.push(data as Category);
     return { success: true, category: data as Category };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to create category';
@@ -932,6 +1309,7 @@ export async function deleteAdminCategory(id: string | number): Promise<{ succes
       .eq('id', id);
 
     if (error) return { success: false, error: error.message };
+    cachedCategories = cachedCategories.filter((c) => c.id !== id);
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to delete category';
