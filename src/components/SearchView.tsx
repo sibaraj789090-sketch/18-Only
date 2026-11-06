@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, X, ArrowLeft, Clock, Sparkles } from 'lucide-react';
 import { Video, Category } from '../types/database';
 import { VideoCard } from './VideoCard';
+import { AdBanner } from './AdBanner';
 import {
   getSearchHistory,
   addToSearchHistory,
@@ -181,13 +182,17 @@ export const SearchView: React.FC<SearchViewProps> = ({
         {/* Video Cards Grid/List */}
         {filteredVideos.length > 0 ? (
           <div className="space-y-4">
-            {filteredVideos.map((video) => (
-              <VideoCard
-                key={video.id}
-                video={video}
-                onSelectVideo={onSelectVideo}
-                onShare={onShareVideo}
-              />
+            {filteredVideos.map((video, idx) => (
+              <React.Fragment key={video.id}>
+                <VideoCard
+                  video={video}
+                  onSelectVideo={onSelectVideo}
+                  onShare={onShareVideo}
+                />
+                {(idx + 1) % 3 === 0 && (
+                  <AdBanner placement="feed" />
+                )}
+              </React.Fragment>
             ))}
           </div>
         ) : (

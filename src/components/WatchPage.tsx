@@ -23,6 +23,7 @@ import {
 import { isVideoLiked, toggleLikedVideo, isWatchLater, toggleWatchLater, addToWatchHistory } from '../lib/storage';
 import { isDemoVideo } from '../lib/demoVideo';
 import { useToast } from './Toast';
+import { AdBanner } from './AdBanner';
 
 interface WatchPageProps {
   video: Video;
@@ -308,6 +309,9 @@ export const WatchPage: React.FC<WatchPageProps> = ({
         </div>
       </div>
 
+      {/* Promoted Ad Slot Under Video Player */}
+      <AdBanner placement="watch" />
+
       {/* Comments Section */}
       <section className="px-4 py-3 border-t border-slate-900/80">
         <div className="flex items-center justify-between mb-3">
@@ -390,39 +394,43 @@ export const WatchPage: React.FC<WatchPageProps> = ({
         </h2>
 
         <div className="space-y-3">
-          {relatedVideos.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => onSelectRelatedVideo(item)}
-              className="flex items-center gap-3 cursor-pointer group active:opacity-90"
-            >
-              <div className="w-32 aspect-video bg-[#0c121e] rounded-lg overflow-hidden shrink-0 relative">
-                {item.thumbnail_url ? (
-                  <img
-                    src={item.thumbnail_url}
-                    alt={item.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-[#11192b] flex items-center justify-center text-red-500">
-                    <Sparkles className="w-4 h-4" />
+          {relatedVideos.map((item, idx) => (
+            <React.Fragment key={item.id}>
+              <div
+                onClick={() => onSelectRelatedVideo(item)}
+                className="flex items-center gap-3 cursor-pointer group active:opacity-90"
+              >
+                <div className="w-32 aspect-video bg-[#0c121e] rounded-lg overflow-hidden shrink-0 relative">
+                  {item.thumbnail_url ? (
+                    <img
+                      src={item.thumbnail_url}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-[#11192b] flex items-center justify-center text-red-500">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug group-hover:text-red-400 transition-colors">
+                    {item.title}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                    {item.author_name || '18+Only Creator'}
+                  </p>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
+                    <span>{formatViews(item.views)}</span>
+                    <span>·</span>
+                    <span>{formatTimeAgo(item.created_at)}</span>
                   </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-semibold text-slate-200 line-clamp-2 leading-snug group-hover:text-red-400 transition-colors">
-                  {item.title}
-                </h4>
-                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                  {item.author_name || '18+Only Creator'}
-                </p>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
-                  <span>{formatViews(item.views)}</span>
-                  <span>·</span>
-                  <span>{formatTimeAgo(item.created_at)}</span>
                 </div>
               </div>
-            </div>
+
+              {/* In-stream Ad after second related video */}
+              {idx === 1 && <AdBanner placement="feed" className="my-2" />}
+            </React.Fragment>
           ))}
         </div>
       </section>

@@ -21,7 +21,21 @@ import {
   Loader2,
   CheckCircle2,
   ImageIcon,
+  Megaphone,
+  RefreshCw,
+  Sliders,
+  PlaySquare,
+  HelpCircle,
 } from 'lucide-react';
+import {
+  getAdConfig,
+  saveAdConfig,
+  resetAdConfig,
+  testVastTag,
+  GOOGLE_SAMPLE_VAST_TAG_URL,
+  HILLTOPADS_VAST_TAG_URL,
+  AdConfig,
+} from '../lib/vast';
 import { Video, Category } from '../types/database';
 import {
   signInAdmin,
@@ -67,8 +81,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [adminVideos, setAdminVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [activeTab, setActiveTab] = useState<'videos' | 'new-video' | 'categories'>('videos');
+  const [activeTab, setActiveTab] = useState<'videos' | 'new-video' | 'categories' | 'ads'>('videos');
   const [searchFilter, setSearchFilter] = useState('');
+
+  // Ad Settings State
+  const [adConfig, setAdConfigState] = useState<AdConfig>(getAdConfig());
+  const [isTestingAdTag, setIsTestingAdTag] = useState(false);
+  const [adTestStatus, setAdTestStatus] = useState<{
+    tested: boolean;
+    success: boolean;
+    message: string;
+    mediaUrl?: string | null;
+  } | null>(null);
+  const [isSavingAdConfig, setIsSavingAdConfig] = useState(false);
 
   // New / Edit Video Form State
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
@@ -91,6 +116,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Delete confirmation
   const [deletingVideoId, setDeletingVideoId] = useState<string | number | null>(null);
+
+  const handleSaveAdConfig = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingAdConfig(true);
+    try {
+      saveAdConfig(adConfig);
+      showToast('Ad configuration saved! Changes are now live.', 'success');
+    } catch {
+      showToast('Failed to save ad settings.', 'error');
+    } finally {
+      setIsSavingAdConfig(false);
+    }
+  };
+
+  const handleTestAdTag = async () => {
+    if (!adConfig.tagUrl.trim()) {
+      showToast('Please enter a VAST Tag URL to test.', 'error');
+      return;
+    }
+    setIsTestingAdTag(true);
+    setAdTestStatus(null);
+    try {
+      const result = await testVastTag(adConfig.tagUrl);
+      setAdTestStatus({
+        tested: true,
+        success: result.success,
+        message: result.message,
+        mediaUrl: result.mediaUrl,
+      });
+      if (result.success) {
+        showToast('VAST Tag test passed! Ad XML and media file detected.', 'success');
+      } else {
+        showToast(result.message, 'error');
+      }
+    } catch (err: any) {
+      setAdTestStatus({
+        tested: true,
+        success: false,
+        message: err?.message || 'Failed to ping VAST tag URL.',
+      });
+      showToast('VAST Tag test failed.', 'error');
+    } finally {
+      setIsTestingAdTag(false);
+    }
+  };
+
+  const handleResetAdConfig = () => {
+    const def = resetAdConfig();
+    setAdConfigState(def);
+    setAdTestStatus(null);
+    showToast('Reset ad settings to default working configuration.', 'info');
+  };
 
   // 1. Check existing verified admin session with 2.5s safety timeout
   const checkAuth = useCallback(async () => {
@@ -623,20 +700,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center bg-[#0d1424] p-1 rounded-xl border border-slate-800 text-xs font-semibold gap-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 bg-[#0d1424] p-1.5 rounded-xl border border-slate-800 text-xs font-semibold gap-1.5">
           <button
             onClick={() => {
               setActiveTab('videos');
               resetForm();
             }}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'videos'
                 ? 'bg-red-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Film className="w-3.5 h-3.5" />
-            <span>Manage Videos ({adminVideos.length})</span>
+            <Film className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Videos ({adminVideos.length})</span>
           </button>
 
           <button
@@ -644,26 +721,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               setActiveTab('new-video');
               if (!editingVideo) resetForm();
             }}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'new-video'
                 ? 'bg-red-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{editingVideo ? 'Edit Video' : 'Add Video'}</span>
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{editingVideo ? 'Edit' : 'Add Video'}</span>
           </button>
 
           <button
             onClick={() => setActiveTab('categories')}
-            className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
               activeTab === 'categories'
                 ? 'bg-red-600 text-white shadow'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Categories ({categories.length})</span>
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Categories ({categories.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ads')}
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors relative ${
+              activeTab === 'ads'
+                ? 'bg-red-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Megaphone className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <span className="truncate">Ad Settings</span>
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                adConfig.enabled ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-slate-500'
+              }`}
+              title={adConfig.enabled ? 'Ads Active' : 'Ads Disabled'}
+            />
           </button>
         </div>
 
@@ -1170,6 +1265,298 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Ad & Monetization Settings */}
+        {activeTab === 'ads' && (
+          <div className="space-y-4 animate-in fade-in">
+            {/* Master Toggle Card */}
+            <div className="bg-[#0e1628] border border-slate-800 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${adConfig.enabled ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/60' : 'bg-slate-800 text-slate-400'}`}>
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Video Pre-Roll Ads</span>
+                      <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${adConfig.enabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                        {adConfig.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Plays a VAST/IMA video advertisement before user plays any video.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={adConfig.enabled}
+                    onChange={(e) => setAdConfigState({ ...adConfig, enabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  <span className="ml-2.5 text-xs font-semibold text-slate-300">
+                    {adConfig.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Tag URL Input & Presets */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>VAST Tag URL</span>
+                    <span className="text-rose-400">*</span>
+                  </label>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Supported: HilltopAds, Monetag, Google Ad Manager, VAST 2.0/3.0/4.0
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="url"
+                    value={adConfig.tagUrl}
+                    onChange={(e) => {
+                      setAdConfigState({ ...adConfig, tagUrl: e.target.value });
+                      setAdTestStatus(null);
+                    }}
+                    placeholder="https://your-ad-network.com/vast/tag?..."
+                    className="flex-1 bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestAdTag}
+                    disabled={isTestingAdTag || !adConfig.tagUrl.trim()}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {isTestingAdTag ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    ) : (
+                      <PlaySquare className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>Test Tag</span>
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Quick Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdConfigState({
+                        ...adConfig,
+                        tagUrl: GOOGLE_SAMPLE_VAST_TAG_URL,
+                        allowFallback: true,
+                      });
+                      setAdTestStatus(null);
+                      showToast('Google IMA sample tag selected (100% ad fill rate for testing).', 'info');
+                    }}
+                    className="text-[11px] px-2.5 py-1 bg-blue-950/40 hover:bg-blue-900/40 border border-blue-800/50 text-blue-300 rounded-lg font-semibold transition-colors flex items-center gap-1"
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-blue-400" />
+                    <span>Google IMA Test Tag (100% Fill)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdConfigState({
+                        ...adConfig,
+                        tagUrl: HILLTOPADS_VAST_TAG_URL,
+                        allowFallback: true,
+                      });
+                      setAdTestStatus(null);
+                      showToast('HilltopAds tag selected.', 'info');
+                    }}
+                    className="text-[11px] px-2.5 py-1 bg-amber-950/40 hover:bg-amber-900/40 border border-amber-800/50 text-amber-300 rounded-lg font-semibold transition-colors"
+                  >
+                    HilltopAds Tag
+                  </button>
+                </div>
+
+                {/* Live Test Diagnostic Output */}
+                {adTestStatus && (
+                  <div
+                    className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
+                      adTestStatus.success
+                        ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-200'
+                        : 'bg-rose-950/30 border-rose-800/60 text-rose-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      {adTestStatus.success ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      )}
+                      <span>{adTestStatus.message}</span>
+                    </div>
+
+                    {adTestStatus.mediaUrl && (
+                      <p className="text-[11px] text-slate-300 font-mono truncate">
+                        Media stream: {adTestStatus.mediaUrl}
+                      </p>
+                    )}
+
+                    {!adTestStatus.success && (
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Tip: Because your "Guaranteed Video Ad Fallback" is enabled below, the video player will automatically display an ad even if your ad network returns 404 or empty inventory!
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Multi-Placement Display & Banner Ads Card */}
+            <div className="bg-[#0e1628] border border-slate-800 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${adConfig.bannerAdsEnabled ? 'bg-amber-950/60 text-amber-400 border border-amber-800/60' : 'bg-slate-800 text-slate-400'}`}>
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>In-Page & Multi-Placement Banner Ads</span>
+                      <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded ${adConfig.bannerAdsEnabled ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                        {adConfig.bannerAdsEnabled ? 'Active (4 Placements)' : 'Disabled'}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Loads display banners, popunders & in-page push ads across multiple key spots in the app.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={adConfig.bannerAdsEnabled ?? true}
+                    onChange={(e) => setAdConfigState({ ...adConfig, bannerAdsEnabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                  <span className="ml-2.5 text-xs font-semibold text-slate-300">
+                    {adConfig.bannerAdsEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
+
+              {/* Script URL Inputs & Live Placements Grid */}
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      Ad Script 1 (In-Page Push / Popunder / Native)
+                    </label>
+                    <input
+                      type="text"
+                      value={adConfig.bannerScriptUrl || ''}
+                      onChange={(e) => setAdConfigState({ ...adConfig, bannerScriptUrl: e.target.value })}
+                      placeholder="//shameful-farm.com/bvX..."
+                      className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      Ad Script 2 (Display Banner / Social Bar / Floating)
+                    </label>
+                    <input
+                      type="text"
+                      value={adConfig.bannerScriptUrl2 || ''}
+                      onChange={(e) => setAdConfigState({ ...adConfig, bannerScriptUrl2: e.target.value })}
+                      placeholder="//shameful-farm.com/bpX..."
+                      className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                      Ad Script 3 (Multi-Placement Popunder / Interstitial / Dialog)
+                    </label>
+                    <input
+                      type="text"
+                      value={adConfig.bannerScriptUrl3 || ''}
+                      onChange={(e) => setAdConfigState({ ...adConfig, bannerScriptUrl3: e.target.value })}
+                      placeholder="//shameful-farm.com/bXXEV..."
+                      className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-[#080d19] border border-slate-800/80 rounded-xl p-3.5 space-y-2">
+                  <span className="text-xs font-bold text-slate-200 block">
+                    Active Ad Placements (Site-wide Multi-Placement):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span><strong>Global Head:</strong> Popunder / Direct / In-Page Push</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span><strong>Watch Page:</strong> Under video player & related</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span><strong>Home Feed:</strong> In-stream between videos</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span><strong>Search View:</strong> Between search results</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800 col-span-1 sm:col-span-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span><strong>Explore & Mobile Bottom:</strong> Trending section & sticky floating bar</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Save & Reset Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveAdConfig}
+                  disabled={isSavingAdConfig}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95"
+                >
+                  {isSavingAdConfig ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  <span>Save Ad Configuration</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetAdConfig}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Reset Defaults</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={onBackToSite}
+                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+              >
+                <span>Preview On Video Player</span>
+                <ExternalLink className="w-3 h-3 text-red-400" />
+              </button>
             </div>
           </div>
         )}

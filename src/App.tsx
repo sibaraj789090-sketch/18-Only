@@ -26,6 +26,7 @@ import { BottomNav, TabType } from './components/BottomNav';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ShareModal } from './components/ShareModal';
 import { AdminPanel } from './components/AdminPanel';
+import { AdBanner } from './components/AdBanner';
 import {
   Loader2,
   RefreshCw,
@@ -336,13 +337,18 @@ function MainApp() {
               ) : feedVideos.length > 0 ? (
                 /* Real Video Cards List */
                 <div className="space-y-4">
-                  {feedVideos.map((video) => (
-                    <VideoCard
-                      key={video.id}
-                      video={video}
-                      onSelectVideo={handleSelectVideo}
-                      onShare={handleOpenShare}
-                    />
+                  {feedVideos.map((video, idx) => (
+                    <React.Fragment key={video.id}>
+                      <VideoCard
+                        video={video}
+                        onSelectVideo={handleSelectVideo}
+                        onShare={handleOpenShare}
+                      />
+                      {/* In-feed Sponsored Ad Banner after every 3 videos */}
+                      {(idx + 1) % 3 === 0 && (
+                        <AdBanner placement="feed" />
+                      )}
+                    </React.Fragment>
                   ))}
 
                   {/* Infinite Scroll / Load More Button */}
@@ -438,6 +444,9 @@ function MainApp() {
             onOpenAdmin={handleOpenAdmin}
           />
         )}
+
+        {/* Sticky Mobile Floating Ad Banner */}
+        <AdBanner placement="sticky" />
 
         {/* Bottom Navigation (Home, Explore, Search, Library) */}
         <BottomNav currentTab={currentTab} onChangeTab={setCurrentTab} />

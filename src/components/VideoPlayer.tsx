@@ -18,7 +18,7 @@ import { resolveMediaUrl, isExternalUrl } from '../lib/supabase';
 import { isDemoVideo, DEMO_BACKUP_URLS, DEMO_BACKUP_THUMBNAIL } from '../lib/demoVideo';
 import { formatPlayerTime } from '../lib/formatters';
 import {
-  HILLTOPADS_VAST_TAG_URL,
+  getAdConfig,
   fetchAndParseVast,
   pingTrackingUrl,
   VastAdData,
@@ -160,9 +160,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
   /**
    * Native Fallback VAST Player if Google IMA is blocked or errors.
    */
+  /**
+   * Native Fallback VAST Player if Google IMA is blocked or errors.
+   */
   const startFallbackVastAd = useCallback(async () => {
+    const adConfig = getAdConfig();
+    if (!adConfig.enabled) {
+      finishAdAndStartMainVideo();
+      return;
+    }
+
     try {
-      const vastData = await fetchAndParseVast(HILLTOPADS_VAST_TAG_URL);
+      const vastData = await fetchAndParseVast(adConfig.tagUrl, adConfig.allowFallback);
       if (!vastData || !vastData.mediaUrl || !videoRef.current) {
         // No ad fill or parse error -> proceed to main video immediately
         finishAdAndStartMainVideo();
@@ -175,8 +184,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
       setAdDuration(vastData.duration);
       setAdTimeRemaining(vastData.duration);
       setAdClickThrough(vastData.clickThroughUrl || null);
-      setCanSkipAd(vastData.skipOffset <= 0);
-      setAdSkipCountdown(vastData.skipOffset);
+
+      const effectiveSkip = Math.min(
+        typeof adConfig.skipOffsetSeconds === 'number' ? adConfig.skipOffsetSeconds : (adConfig.skipOffset || 5),
+        vastData.skipOffset || 5
+      );
+      setCanSkipAd(effectiveSkip <= 0);
+      setAdSkipCountdown(effectiveSkip);
 
       // Ping impression and start trackings
       vastData.impressions.forEach(pingTrackingUrl);
@@ -192,8 +206,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
           setIsLoading(false);
         })
         .catch(() => {
-          // If fallback ad play fails, skip straight to content
-          finishAdAndStartMainVideo();
+          // If browser blocked sound autoplay, try playing muted (common on mobile)
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setIsMuted(true);
+            videoRef.current
+              .play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoading(false);
+              })
+              .catch(() => {
+                finishAdAndStartMainVideo();
+              });
+          } else {
+            finishAdAndStartMainVideo();
+          }
         });
     } catch {
       finishAdAndStartMainVideo();
@@ -204,11 +232,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
    * Initializes Google IMA SDK and requests pre-roll ad.
    */
   const requestPreRollAd = useCallback(() => {
-    // Safety timeout: if ad network hangs or times out, start main video within 5.5s
+    const adConfig = getAdConfig();
+    if (!adConfig.enabled) {
+      finishAdAndStartMainVideo();
+      return;
+    }
+
+    // Safety timeout: if ad network hangs or times out, start main video within 6.5s
     adSafetyTimeoutRef.current = setTimeout(() => {
       console.warn('Ad request timed out, proceeding to main video content');
       finishAdAndStartMainVideo();
-    }, 5500);
+    }, 6500);
 
     const googleIma = window.google?.ima;
 
@@ -257,8 +291,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
 
         // AdsManager Event Listeners
         adsManager.addEventListener(googleIma.AdErrorEvent.Type.AD_ERROR, (err: any) => {
-          console.warn('IMA Ad Error:', err.getError?.());
-          finishAdAndStartMainVideo();
+          console.warn('IMA Ad Error (attempting resilient fallback):', err.getError?.());
+          startFallbackVastAd();
         });
 
         adsManager.addEventListener(googleIma.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () => {
@@ -308,7 +342,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
           adsManager.start();
         } catch (initErr) {
           console.warn('Error starting IMA adsManager:', initErr);
-          finishAdAndStartMainVideo();
+          startFallbackVastAd();
         }
       };
 
@@ -333,7 +367,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
 
       // 3. Create AdsRequest
       const adsRequest = new googleIma.AdsRequest();
-      adsRequest.adTagUrl = HILLTOPADS_VAST_TAG_URL;
+      adsRequest.adTagUrl = adConfig.tagUrl;
       const width = containerRef.current?.clientWidth || 360;
       const height = containerRef.current?.clientHeight || 202;
       adsRequest.linearAdSlotWidth = width;
@@ -341,14 +375,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
       adsRequest.nonLinearAdSlotWidth = width;
       adsRequest.nonLinearAdSlotHeight = height;
       adsRequest.setAdWillAutoPlay(true);
-      adsRequest.setAdWillPlayMuted(false);
+      adsRequest.setAdWillPlayMuted(isMuted);
 
       adsLoader.requestAds(adsRequest);
     } catch (err) {
       console.warn('IMA setup caught exception, running fallback:', err);
       startFallbackVastAd();
     }
-  }, [finishAdAndStartMainVideo, startFallbackVastAd]);
+  }, [finishAdAndStartMainVideo, startFallbackVastAd, isMuted]);
 
   /**
    * Reset states when a new video is selected.
@@ -596,15 +630,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
               </span>
             </div>
 
-            {adClickThrough && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={handleVisitAdvertiser}
-                className="flex items-center gap-1.5 bg-black/80 hover:bg-slate-900 border border-white/20 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-lg backdrop-blur-xs shadow-lg transition-transform active:scale-95"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleMute();
+                }}
+                className="p-1.5 bg-black/80 hover:bg-slate-900 border border-white/20 text-white rounded-lg backdrop-blur-xs shadow transition-transform active:scale-95 flex items-center gap-1"
+                title={isMuted ? 'Unmute ad' : 'Mute ad'}
               >
-                <span>Visit Site</span>
-                <ExternalLink className="w-3 h-3 text-red-400" />
+                {isMuted ? (
+                  <>
+                    <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[10px] text-amber-300 font-bold hidden sm:inline">Unmute</span>
+                  </>
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                )}
               </button>
-            )}
+
+              {adClickThrough && (
+                <button
+                  onClick={handleVisitAdvertiser}
+                  className="flex items-center gap-1.5 bg-black/80 hover:bg-slate-900 border border-white/20 text-white text-[11px] font-semibold px-2.5 py-1.5 rounded-lg backdrop-blur-xs shadow-lg transition-transform active:scale-95"
+                >
+                  <span>Visit Site</span>
+                  <ExternalLink className="w-3 h-3 text-red-400" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Bottom Right Skip Button */}

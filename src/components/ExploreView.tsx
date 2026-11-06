@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Video, Category } from '../types/database';
 import { VideoCard } from './VideoCard';
+import { AdBanner } from './AdBanner';
 
 interface ExploreViewProps {
   videos: Video[];
@@ -103,8 +104,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         </div>
       </div>
 
+      {/* Sponsored Ad Banner in Explore */}
+      <AdBanner placement="explore" />
+
       {/* Trending Section */}
-      <div className="px-3 pt-4">
+      <div className="px-3 pt-2">
         <div className="flex items-center gap-2 px-1 mb-3">
           <TrendingUp className="w-4 h-4 text-red-500" />
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">
