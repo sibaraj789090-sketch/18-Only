@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
+  ImageIcon,
 } from 'lucide-react';
 import { Video, Category } from '../types/database';
 import {
@@ -33,6 +34,8 @@ import {
   createAdminCategory,
   deleteAdminCategory,
   uploadToStorage,
+  uploadPosterImage,
+  resolveMediaUrl,
   fetchCategories,
   resetAdminPassword,
 } from '../lib/supabase';
@@ -54,7 +57,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Authentication State
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState('ladandas22@gmail.com');
   const [loginPassword, setLoginPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -78,6 +81,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [formFeatured, setFormFeatured] = useState(false);
   const [isSavingVideo, setIsSavingVideo] = useState(false);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+  const [posterUploadNote, setPosterUploadNote] = useState('');
 
   // New Category Form State
   const [newCatName, setNewCatName] = useState('');
@@ -144,6 +149,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
+    if (loginEmail.trim().toLowerCase() !== 'ladandas22@gmail.com') {
+      setLoginError('Security Restriction: Only the owner email (ladandas22@gmail.com) is authorized to log in. Dusra koi bhi Gmail se login allowed nahi hai.');
+      return;
+    }
+
     setIsLoggingIn(true);
     const res = await signInAdmin(loginEmail, loginPassword);
     setIsLoggingIn(false);
@@ -162,6 +172,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleForgotPassword = async () => {
     if (!loginEmail.trim()) {
       setLoginError('Please enter your email above first to receive the reset link.');
+      return;
+    }
+    if (loginEmail.trim().toLowerCase() !== 'ladandas22@gmail.com') {
+      setLoginError('Password reset is restricted strictly to the owner email (ladandas22@gmail.com).');
       return;
     }
     setIsResettingPassword(true);
@@ -230,6 +244,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormDescription(video.description || '');
     setFormVideoUrl(video.video_url || '');
     setFormThumbnailUrl(video.thumbnail_url || '');
+    setPosterUploadNote(video.thumbnail_url ? 'Existing poster loaded' : '');
     setFormCategory(
       typeof video.category === 'object' && video.category
         ? video.category.name
@@ -248,6 +263,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setFormDescription('');
     setFormVideoUrl('');
     setFormThumbnailUrl('');
+    setPosterUploadNote('');
     setFormDuration('');
     setFormIsPublished(true);
     setFormFeatured(false);
@@ -299,7 +315,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  // Upload file to Supabase storage bucket 'videos'
+  // Upload file (video file or poster image with universal format support & compression)
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: 'video' | 'thumbnail'
@@ -307,23 +323,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploadingMedia(true);
-    showToast(`Uploading ${type}...`);
+    if (type === 'thumbnail') {
+      setIsUploadingPoster(true);
+      showToast('Processing & optimizing poster image...');
+      try {
+        const res = await uploadPosterImage(file);
+        setIsUploadingPoster(false);
+        if (res.success && res.url) {
+          setFormThumbnailUrl(res.url);
+          setPosterUploadNote(res.note || 'Poster ready');
+          showToast(res.note || 'Poster photo uploaded successfully');
+        } else {
+          showToast(res.error || 'Failed to process poster image', 'error');
+        }
+      } catch (err: unknown) {
+        setIsUploadingPoster(false);
+        const msg = err instanceof Error ? err.message : 'Poster upload failed';
+        showToast(msg, 'error');
+      }
+      e.target.value = '';
+      return;
+    }
 
-    const folder = type === 'video' ? 'videos' : 'thumbnails';
-    const res = await uploadToStorage(file, 'videos', folder);
+    // Video upload
+    setIsUploadingMedia(true);
+    showToast('Uploading video file to storage...');
+    const res = await uploadToStorage(file, 'videos', 'videos');
     setIsUploadingMedia(false);
 
     if (res.success && res.url) {
-      if (type === 'video') {
-        setFormVideoUrl(res.url);
-      } else {
-        setFormThumbnailUrl(res.url);
-      }
-      showToast(`${type === 'video' ? 'Video' : 'Thumbnail'} uploaded to Supabase storage`);
+      setFormVideoUrl(res.url);
+      showToast('Video file uploaded successfully');
     } else {
-      showToast(res.error || 'Upload failed', 'error');
+      showToast(res.error || 'Video upload failed', 'error');
     }
+    e.target.value = '';
   };
 
   // Add Category
@@ -447,18 +481,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Admin Email / Gmail
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Authorized Admin Gmail
+                </label>
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-2 py-0.5 rounded-full font-mono font-bold">
+                  Owner Restricted
+                </span>
+              </div>
               <input
                 type="email"
                 autoComplete="email"
                 required
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="yourname@gmail.com or admin@cardingx.in"
-                className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
+                placeholder="ladandas22@gmail.com"
+                className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 font-mono transition-colors"
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Security Lock: Sirf <strong className="text-white">ladandas22@gmail.com</strong> ko admin portal access karne ki permission hai. Dusra koi bhi Gmail login nahi kar sakta.
+              </p>
             </div>
 
             <div>
@@ -863,31 +905,122 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               />
             </div>
 
-            {/* Thumbnail URL & File Upload */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
+            {/* Video Poster Photo (Thumbnail) Upload & Preview */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <label className="block text-xs font-semibold text-slate-300">
-                  Thumbnail URL (Optional)
+                  Video Poster / Thumbnail Photo
                 </label>
-                <label className="text-[11px] text-red-400 hover:text-red-300 font-semibold cursor-pointer flex items-center gap-1">
-                  <Upload className="w-3 h-3" />
-                  <span>Upload Poster Image</span>
+                <span className="text-[10px] text-slate-400">
+                  All image types supported (JPG, PNG, WEBP, AVIF, HEIC, GIF, SVG)
+                </span>
+              </div>
+
+              {/* Upload Drop Zone / Live Preview Box */}
+              {formThumbnailUrl ? (
+                <div className="relative rounded-2xl overflow-hidden border border-slate-700/80 bg-slate-900/60 p-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className="relative w-36 aspect-video rounded-xl overflow-hidden bg-black/40 border border-slate-800 flex-shrink-0">
+                      <img
+                        src={resolveMediaUrl(formThumbnailUrl)}
+                        alt="Poster preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src =
+                            'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80';
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 py-0.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                        <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Poster Photo Ready</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                        {posterUploadNote || 'Optimized photo for crisp streaming'}
+                      </p>
+
+                      <div className="flex items-center gap-2 mt-2.5">
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium cursor-pointer transition-colors">
+                          <Upload className="w-3 h-3 text-red-400" />
+                          <span>Change Photo</span>
+                          <input
+                            type="file"
+                            accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.jfif,.svg,.heic"
+                            className="hidden"
+                            onChange={(e) => handleFileUpload(e, 'thumbnail')}
+                            disabled={isUploadingPoster}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormThumbnailUrl('');
+                            setPosterUploadNote('');
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/40 hover:bg-red-900/50 text-red-400 text-xs font-medium transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <label
+                  className={`relative flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-2xl transition-all cursor-pointer ${
+                    isUploadingPoster
+                      ? 'border-red-500/50 bg-red-950/10'
+                      : 'border-slate-800 hover:border-red-500/50 bg-[#080d19]/80 hover:bg-slate-900/40'
+                  }`}
+                >
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.jfif,.svg,.heic"
                     className="hidden"
                     onChange={(e) => handleFileUpload(e, 'thumbnail')}
-                    disabled={isUploadingMedia}
+                    disabled={isUploadingPoster}
                   />
+                  {isUploadingPoster ? (
+                    <div className="flex flex-col items-center gap-2 py-2">
+                      <Loader2 className="w-6 h-6 text-red-500 animate-spin" />
+                      <span className="text-xs text-red-400 font-medium">
+                        Optimizing & uploading poster photo...
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Processing image for crisp mobile playback
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center text-center gap-1.5 py-1">
+                      <div className="w-10 h-10 rounded-xl bg-red-500/10 text-red-400 flex items-center justify-center">
+                        <ImageIcon className="w-5 h-5" />
+                      </div>
+                      <div className="text-xs font-semibold text-slate-200">
+                        Click or tap to upload Poster Photo
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Supports all formats: <span className="text-slate-300">JPG, PNG, WEBP, AVIF, HEIC, GIF, SVG</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Auto-compressed client-side so upload never fails
+                      </div>
+                    </div>
+                  )}
                 </label>
+              )}
+
+              {/* Direct URL input fallback */}
+              <div className="pt-0.5">
+                <input
+                  type="text"
+                  value={formThumbnailUrl}
+                  onChange={(e) => setFormThumbnailUrl(e.target.value)}
+                  placeholder="Or paste direct image URL (https://... or data:image/...)"
+                  className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                />
               </div>
-              <input
-                type="text"
-                value={formThumbnailUrl}
-                onChange={(e) => setFormThumbnailUrl(e.target.value)}
-                placeholder="https://... or image path"
-                className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
-              />
             </div>
 
             {/* Category & Duration */}

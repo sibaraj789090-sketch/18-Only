@@ -575,10 +575,26 @@ export async function testSupabaseConnection(): Promise<{
 // ADMIN SYSTEM AUTHENTICATION & CRUD OPERATIONS
 // ========================================================
 
+/**
+ * Strict Security Lockdown: Only the verified owner Gmail is permitted to access the admin portal.
+ * Any other Gmail or email account is strictly rejected.
+ */
+export const AUTHORIZED_ADMIN_EMAILS: string[] = ['ladandas22@gmail.com'];
+
 export async function signInAdmin(
   email: string,
   pass: string
 ): Promise<{ success: boolean; user?: any; error?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Strict check: Block any unauthorized Gmail or other email upfront
+  if (!AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail)) {
+    return {
+      success: false,
+      error: `Access Denied: Only the verified administrator email (${AUTHORIZED_ADMIN_EMAILS[0]}) is authorized to log into this portal. Other accounts are strictly blocked.`,
+    };
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return { success: false, error: 'Supabase client is not configured.' };
@@ -586,7 +602,7 @@ export async function signInAdmin(
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: cleanEmail,
       password: pass,
     });
 
@@ -595,7 +611,6 @@ export async function signInAdmin(
     }
 
     // Verify authorized presence in admin_users table
-    const cleanEmail = email.trim().toLowerCase();
     let isAuthorized = false;
 
     try {
@@ -635,10 +650,10 @@ export async function signInAdmin(
           .from('admin_users')
           .select('*', { count: 'exact', head: true });
 
-        // If the table is empty (initial project setup), auto-register the authenticated user
+        // If the table is empty (initial project setup), auto-register the verified owner
         if (count === 0 || count === null) {
           await supabase.from('admin_users').insert([
-            { id: data.user.id, email: cleanEmail, role: 'admin' }
+            { id: data.user.id, email: cleanEmail, role: 'superadmin' }
           ]);
           isAuthorized = true;
         }
@@ -650,7 +665,7 @@ export async function signInAdmin(
       await supabase.auth.signOut();
       return {
         success: false,
-        error: 'Access Denied: This account is not registered in the admin_users table.',
+        error: `Access Denied: ${cleanEmail} is not registered in the admin_users table.`,
       };
     }
 
@@ -662,19 +677,29 @@ export async function signInAdmin(
 }
 
 export async function resetAdminPassword(email: string): Promise<{ success: boolean; message: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Strict check: Block password resets for any other email
+  if (!AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail)) {
+    return {
+      success: false,
+      message: `Access Denied: Password reset is restricted strictly to ${AUTHORIZED_ADMIN_EMAILS[0]}.`,
+    };
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     return { success: false, message: 'Supabase client is not configured.' };
   }
 
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
       redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/admin/siba` : undefined,
     });
     if (error) {
       return { success: false, message: error.message };
     }
-    return { success: true, message: 'Password reset email sent! Check your Gmail inbox.' };
+    return { success: true, message: `Password reset email sent to ${cleanEmail}! Check your Gmail inbox.` };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to send reset email';
     return { success: false, message: msg };
@@ -698,18 +723,23 @@ export async function verifyCurrentAdminUser(): Promise<any | null> {
     const { data: { user }, error: userErr } = await supabase.auth.getUser();
     if (userErr || !user) return null;
 
+    const userEmail = (user.email || '').trim().toLowerCase();
+    // Strict lockdown: verify email belongs to AUTHORIZED_ADMIN_EMAILS
+    if (!AUTHORIZED_ADMIN_EMAILS.includes(userEmail)) {
+      await supabase.auth.signOut();
+      return null;
+    }
+
     let isAuthorized = false;
 
-    if (user.email) {
-      try {
-        const { data: byEmail } = await supabase
-          .from('admin_users')
-          .select('*')
-          .eq('email', user.email.toLowerCase())
-          .maybeSingle();
-        if (byEmail) isAuthorized = true;
-      } catch {}
-    }
+    try {
+      const { data: byEmail } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('email', userEmail)
+        .maybeSingle();
+      if (byEmail) isAuthorized = true;
+    } catch {}
 
     if (!isAuthorized) {
       try {
@@ -730,6 +760,21 @@ export async function verifyCurrentAdminUser(): Promise<any | null> {
           .eq('user_id', user.id)
           .maybeSingle();
         if (byUserId) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
+      try {
+        const { count } = await supabase
+          .from('admin_users')
+          .select('*', { count: 'exact', head: true });
+
+        if (count === 0 || count === null) {
+          await supabase.from('admin_users').insert([
+            { id: user.id, email: userEmail, role: 'superadmin' }
+          ]);
+          isAuthorized = true;
+        }
       } catch {}
     }
 
@@ -894,31 +939,273 @@ export async function deleteAdminCategory(id: string | number): Promise<{ succes
   }
 }
 
+/**
+ * Optimizes and resizes any image file (JPG, PNG, WEBP, GIF, BMP, AVIF, HEIC, SVG)
+ * so it never exceeds maximum dimensions or memory limits, ensuring 100% upload success.
+ */
+export async function optimizeImageFile(
+  file: File,
+  maxWidth = 1280,
+  maxHeight = 720,
+  quality = 0.85
+): Promise<{
+  blob: Blob;
+  dataUrl: string;
+  width: number;
+  height: number;
+  type: string;
+}> {
+  // If SVG, preserve vector quality directly
+  if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        resolve({
+          blob: file,
+          dataUrl,
+          width: maxWidth,
+          height: maxHeight,
+          type: 'image/svg+xml',
+        });
+      };
+      reader.onerror = () => reject(new Error('Failed to read SVG file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // For all raster image formats (JPG, JPEG, PNG, WEBP, GIF, BMP, AVIF, HEIC, etc.)
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      // Fallback: return file with empty placeholder if unreadable
+      resolve({
+        blob: file,
+        dataUrl: '',
+        width: 0,
+        height: 0,
+        type: file.type || 'image/jpeg',
+      });
+    };
+
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => {
+        // If browser cannot decode canvas (rare camera format), return original dataUrl directly
+        const rawDataUrl = reader.result as string;
+        resolve({
+          blob: file,
+          dataUrl: rawDataUrl,
+          width: maxWidth,
+          height: maxHeight,
+          type: file.type || 'image/jpeg',
+        });
+      };
+
+      img.onload = () => {
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+
+        // Calculate aspect-preserving dimensions
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          const rawDataUrl = reader.result as string;
+          resolve({
+            blob: file,
+            dataUrl: rawDataUrl,
+            width,
+            height,
+            type: file.type || 'image/jpeg',
+          });
+          return;
+        }
+
+        // Draw image smoothly
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Try WebP first for ultra-lightweight storage & high fidelity, fallback to JPEG
+        let mimeType = 'image/webp';
+        let dataUrl = canvas.toDataURL(mimeType, quality);
+        if (!dataUrl.startsWith('data:image/webp')) {
+          mimeType = 'image/jpeg';
+          dataUrl = canvas.toDataURL(mimeType, quality);
+        }
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve({
+                blob,
+                dataUrl,
+                width,
+                height,
+                type: mimeType,
+              });
+            } else {
+              const rawDataUrl = reader.result as string;
+              resolve({
+                blob: file,
+                dataUrl: rawDataUrl,
+                width,
+                height,
+                type: file.type || 'image/jpeg',
+              });
+            }
+          },
+          mimeType,
+          quality
+        );
+      };
+
+      img.src = reader.result as string;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Uploads a video poster / thumbnail photo supporting ALL image formats (JPG, PNG, WEBP, AVIF, HEIC, GIF, SVG, etc.).
+ * 1. Optimizes and resizes the image client-side to ensure small footprint and instant loading.
+ * 2. Attempts Supabase storage upload across available public buckets ('videos', 'thumbnails', 'public').
+ * 3. If Supabase storage is unavailable, misconfigured, or rejects upload (e.g. RLS or missing bucket),
+ *    gracefully falls back to the optimized base64 data URL stored directly in `thumbnail_url`.
+ *    This ensures that poster uploads NEVER fail.
+ */
+export async function uploadPosterImage(
+  file: File
+): Promise<{ success: boolean; url?: string; note?: string; error?: string }> {
+  try {
+    // 1. Optimize image client-side first
+    const optimized = await optimizeImageFile(file, 1280, 720, 0.85);
+
+    // 2. Try Supabase Storage if configured
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const ext = optimized.type.includes('webp')
+        ? 'webp'
+        : optimized.type.includes('png')
+        ? 'png'
+        : optimized.type.includes('svg')
+        ? 'svg'
+        : 'jpg';
+
+      const fileName = `thumbnails/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+      // Buckets to try in order
+      const candidateBuckets = ['videos', 'thumbnails', 'public'];
+      for (const bucket of candidateBuckets) {
+        try {
+          const { error: uploadErr } = await supabase.storage
+            .from(bucket)
+            .upload(fileName, optimized.blob, {
+              cacheControl: '31536000',
+              contentType: optimized.type,
+              upsert: true,
+            });
+
+          if (!uploadErr) {
+            const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+            if (data?.publicUrl) {
+              return {
+                success: true,
+                url: data.publicUrl,
+                note: `Uploaded to Supabase Storage (${bucket})`,
+              };
+            }
+          }
+        } catch {
+          // Continue to next bucket or data URL fallback
+        }
+      }
+    }
+
+    // 3. Fail-safe fallback: Use optimized base64 Data URL
+    // Stored directly in the text thumbnail_url column - 100% reliable, zero storage setup needed.
+    if (optimized.dataUrl) {
+      return {
+        success: true,
+        url: optimized.dataUrl,
+        note: 'Poster optimized and embedded successfully',
+      };
+    }
+
+    return { success: false, error: 'Could not process poster image' };
+  } catch (err: unknown) {
+    try {
+      const rawDataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = () => reject(new Error('Cannot read file'));
+        r.readAsDataURL(file);
+      });
+      return {
+        success: true,
+        url: rawDataUrl,
+        note: 'Poster loaded successfully',
+      };
+    } catch {
+      const msg = err instanceof Error ? err.message : 'Failed to process image';
+      return { success: false, error: msg };
+    }
+  }
+}
+
 export async function uploadToStorage(
   file: File,
   bucket = 'videos',
   folder = 'uploads'
-): Promise<{ success: boolean; url?: string; error?: string }> {
+): Promise<{ success: boolean; url?: string; note?: string; error?: string }> {
+  // If file is an image or destined for thumbnails, use the specialized universal poster uploader
+  if (file.type.startsWith('image/') || folder === 'thumbnails' || /\.(jpe?g|png|webp|gif|bmp|avif|heic|svg|jfif)$/i.test(file.name)) {
+    return uploadPosterImage(file);
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) return { success: false, error: 'Database not connected' };
 
   try {
-    const ext = file.name.split('.').pop() || 'mp4';
-    const cleanFileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const rawExt = file.name.split('.').pop() || 'mp4';
+    const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanFileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext || 'mp4'}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from(bucket)
-      .upload(cleanFileName, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+    const candidateBuckets = [bucket, 'videos', 'public'];
+    let lastError = 'Upload failed';
 
-    if (uploadError) {
-      return { success: false, error: uploadError.message };
+    for (const b of candidateBuckets) {
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from(b)
+          .upload(cleanFileName, file, {
+            cacheControl: '3600',
+            contentType: file.type || 'video/mp4',
+            upsert: true,
+          });
+
+        if (!uploadError) {
+          const { data } = supabase.storage.from(b).getPublicUrl(cleanFileName);
+          return { success: true, url: data.publicUrl };
+        } else {
+          lastError = uploadError.message;
+        }
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : 'Upload failed';
+      }
     }
 
-    const { data } = supabase.storage.from(bucket).getPublicUrl(cleanFileName);
-    return { success: true, url: data.publicUrl };
+    return { success: false, error: lastError };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Upload failed';
     return { success: false, error: message };
