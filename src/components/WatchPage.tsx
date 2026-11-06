@@ -21,6 +21,7 @@ import {
   incrementVideoViews,
 } from '../lib/supabase';
 import { isVideoLiked, toggleLikedVideo, isWatchLater, toggleWatchLater, addToWatchHistory } from '../lib/storage';
+import { isDemoVideo } from '../lib/demoVideo';
 import { useToast } from './Toast';
 
 interface WatchPageProps {
@@ -173,6 +174,19 @@ export const WatchPage: React.FC<WatchPageProps> = ({
       <div className="w-full sticky top-12 z-20 shadow-2xl bg-black">
         <VideoPlayer video={video} autoPlay={true} />
       </div>
+
+      {/* Temporary Demo Notice */}
+      {isDemoVideo(video.id) && (
+        <div className="mx-4 mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-start gap-2.5 text-xs text-amber-300">
+          <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0 mt-1" />
+          <div className="leading-tight">
+            <span className="font-bold">Temporary Demo Video:</span>
+            <span className="text-amber-200/90 ml-1">
+              Not saved to Supabase. Created for testing mobile playback & HilltopAds VAST 3.0 pre-roll ad integration.
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Video Information Header */}
       <div className="px-4 pt-3.5 pb-2">

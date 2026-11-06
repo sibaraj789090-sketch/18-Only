@@ -76,8 +76,8 @@ export function getSupabaseClient(): SupabaseClient | null {
     try {
       supabaseClientInstance = createClient(creds.url, creds.anonKey, {
         auth: {
-          persistSession: false,
-          autoRefreshToken: false,
+          persistSession: true,
+          autoRefreshToken: true,
         },
       });
     } catch (err) {
@@ -90,20 +90,38 @@ export function getSupabaseClient(): SupabaseClient | null {
 }
 
 /**
+ * Detects whether a URL is an external link (http://, https://, blob:, data:).
+ * External URLs play directly in the HTML5 player and are never passed through Supabase storage.
+ */
+export function isExternalUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  );
+}
+
+/**
  * Resolves a video or thumbnail URL.
- * Supports full URLs as well as relative paths stored in the public 'videos' bucket.
+ * External URLs are returned directly as-is.
+ * Relative paths stored in the public 'videos' bucket are resolved with the Supabase project storage URL.
  */
 export function resolveMediaUrl(pathOrUrl?: string | null, bucket = 'videos'): string {
   if (!pathOrUrl) return '';
-  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('data:')) {
-    return pathOrUrl;
+  const trimmed = pathOrUrl.trim();
+
+  if (isExternalUrl(trimmed)) {
+    return trimmed;
   }
 
   const creds = getSupabaseCredentials();
-  if (!creds.url) return pathOrUrl;
+  if (!creds.url) return trimmed;
 
   const cleanUrl = creds.url.replace(/\/+$/, '');
-  const cleanPath = pathOrUrl.replace(/^\/+/, '');
+  const cleanPath = trimmed.replace(/^\/+/, '');
   return `${cleanUrl}/storage/v1/object/public/${bucket}/${cleanPath}`;
 }
 
@@ -227,10 +245,16 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
   }
 }
 
+import { TEMPORARY_DEMO_VIDEO, isDemoVideo } from './demoVideo';
+
 /**
  * Fetch a single video by ID
  */
 export async function fetchVideoById(id: string | number): Promise<Video | null> {
+  if (isDemoVideo(id)) {
+    return TEMPORARY_DEMO_VIDEO;
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
@@ -257,10 +281,14 @@ export async function fetchVideoById(id: string | number): Promise<Video | null>
  * Increment view count for a video.
  */
 export async function incrementVideoViews(video: Video): Promise<number> {
-  const supabase = getSupabaseClient();
   const currentViews = video.views ?? 0;
   const newViews = currentViews + 1;
 
+  if (isDemoVideo(video.id)) {
+    return newViews;
+  }
+
+  const supabase = getSupabaseClient();
   if (!supabase) return newViews;
 
   try {
@@ -280,6 +308,18 @@ export async function incrementVideoViews(video: Video): Promise<number> {
  * Fetch comments for a specific video.
  */
 export async function fetchVideoComments(videoId: string | number): Promise<Comment[]> {
+  if (isDemoVideo(videoId)) {
+    return [
+      {
+        id: 'demo-comment-1',
+        video_id: TEMPORARY_DEMO_VIDEO.id,
+        user_name: 'Ad Tester',
+        comment_text: 'HilltopAds VAST 3.0 pre-roll ad and player test comment.',
+        created_at: new Date(Date.now() - 1800000).toISOString(),
+      },
+    ];
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) return [];
 
@@ -316,6 +356,19 @@ export async function postVideoComment(
   userName: string,
   commentText: string
 ): Promise<{ success: boolean; comment?: Comment; error?: string }> {
+  if (isDemoVideo(videoId)) {
+    return {
+      success: true,
+      comment: {
+        id: 'demo-comment-' + Date.now(),
+        video_id: TEMPORARY_DEMO_VIDEO.id,
+        user_name: userName.trim() || 'Anonymous Viewer',
+        comment_text: commentText.trim(),
+        created_at: new Date().toISOString(),
+      },
+    };
+  }
+
   const supabase = getSupabaseClient();
   const fallbackComment: Comment = {
     id: 'local-' + Date.now(),
@@ -488,3 +541,266 @@ export async function testSupabaseConnection(): Promise<{
     };
   }
 }
+
+// ========================================================
+// ADMIN SYSTEM AUTHENTICATION & CRUD OPERATIONS
+// ========================================================
+
+export async function signInAdmin(
+  email: string,
+  pass: string
+): Promise<{ success: boolean; user?: any; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client is not configured.' };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: pass,
+    });
+
+    if (error || !data.user) {
+      return { success: false, error: error?.message || 'Invalid credentials' };
+    }
+
+    // Verify authorized presence in admin_users table
+    const { data: adminRecord, error: adminErr } = await supabase
+      .from('admin_users')
+      .select('*')
+      .or(`email.eq.${email.trim()},id.eq.${data.user.id}`)
+      .maybeSingle();
+
+    if (adminErr || !adminRecord) {
+      // If table exists but user is not in admin_users, reject access
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        error: 'Access Denied: This account is not registered in the admin_users table.',
+      };
+    }
+
+    return { success: true, user: data.user };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Login failed';
+    return { success: false, error: message };
+  }
+}
+
+export async function signOutAdmin(): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+  }
+}
+
+export async function verifyCurrentAdminUser(): Promise<any | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Verify admin role in admin_users table
+    const { data: adminRecord } = await supabase
+      .from('admin_users')
+      .select('*')
+      .or(`email.eq.${user.email},id.eq.${user.id}`)
+      .maybeSingle();
+
+    if (!adminRecord) {
+      return null;
+    }
+
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchAllAdminVideos(): Promise<Video[]> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('videos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      console.warn('Error fetching admin videos:', error?.message);
+      return [];
+    }
+
+    return data as Video[];
+  } catch (err) {
+    console.error('Error in fetchAllAdminVideos:', err);
+    return [];
+  }
+}
+
+export async function createAdminVideo(videoData: Partial<Video>): Promise<{ success: boolean; video?: Video; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const payload: Record<string, any> = {
+      title: videoData.title,
+      description: videoData.description || '',
+      video_url: videoData.video_url,
+      thumbnail_url: videoData.thumbnail_url || null,
+      views: videoData.views || 0,
+      duration: videoData.duration || null,
+      category: typeof videoData.category === 'object' ? videoData.category?.name : videoData.category,
+      category_id: videoData.category_id || null,
+      is_published: videoData.is_published ?? true,
+      featured: videoData.featured ?? false,
+      author_name: videoData.author_name || '18+Only Creator',
+    };
+
+    const { data, error } = await supabase
+      .from('videos')
+      .insert([payload])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, video: data as Video };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create video';
+    return { success: false, error: message };
+  }
+}
+
+export async function updateAdminVideo(id: string | number, videoData: Partial<Video>): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const payload: Record<string, any> = {};
+    if (videoData.title !== undefined) payload.title = videoData.title;
+    if (videoData.description !== undefined) payload.description = videoData.description;
+    if (videoData.video_url !== undefined) payload.video_url = videoData.video_url;
+    if (videoData.thumbnail_url !== undefined) payload.thumbnail_url = videoData.thumbnail_url;
+    if (videoData.duration !== undefined) payload.duration = videoData.duration;
+    if (videoData.category !== undefined) {
+      payload.category = typeof videoData.category === 'object' ? videoData.category?.name : videoData.category;
+    }
+    if (videoData.category_id !== undefined) payload.category_id = videoData.category_id;
+    if (videoData.is_published !== undefined) payload.is_published = videoData.is_published;
+    if (videoData.featured !== undefined) payload.featured = videoData.featured;
+
+    const { error } = await supabase
+      .from('videos')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to update video';
+    return { success: false, error: message };
+  }
+}
+
+export async function deleteAdminVideo(id: string | number): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const { error } = await supabase
+      .from('videos')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete video';
+    return { success: false, error: message };
+  }
+}
+
+export async function createAdminCategory(name: string, slug?: string): Promise<{ success: boolean; category?: Category; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const cleanSlug = slug?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const { data, error } = await supabase
+      .from('categories')
+      .insert([{ name: name.trim(), slug: cleanSlug }])
+      .select()
+      .single();
+
+    if (error) return { success: false, error: error.message };
+    return { success: true, category: data as Category };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to create category';
+    return { success: false, error: message };
+  }
+}
+
+export async function deleteAdminCategory(id: string | number): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', id);
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to delete category';
+    return { success: false, error: message };
+  }
+}
+
+export async function uploadToStorage(
+  file: File,
+  bucket = 'videos',
+  folder = 'uploads'
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Database not connected' };
+
+  try {
+    const ext = file.name.split('.').pop() || 'mp4';
+    const cleanFileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(cleanFileName, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      return { success: false, error: uploadError.message };
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(cleanFileName);
+    return { success: true, url: data.publicUrl };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Upload failed';
+    return { success: false, error: message };
+  }
+}
+

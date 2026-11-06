@@ -12,6 +12,7 @@ import {
   testSupabaseConnection,
   DEFAULT_CATEGORIES,
 } from './lib/supabase';
+import { TEMPORARY_DEMO_VIDEO } from './lib/demoVideo';
 import { ToastProvider, useToast } from './components/Toast';
 import { Header } from './components/Header';
 import { CategoryBar } from './components/CategoryBar';
@@ -24,7 +25,7 @@ import { LibraryView } from './components/LibraryView';
 import { BottomNav, TabType } from './components/BottomNav';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ShareModal } from './components/ShareModal';
-import { AdminPlaceholder } from './components/AdminPlaceholder';
+import { AdminPanel } from './components/AdminPanel';
 import {
   Loader2,
   RefreshCw,
@@ -70,7 +71,10 @@ function MainApp() {
 
       if (path === '/admin' || hash === '#admin') {
         setIsAdminView(true);
+        setActiveVideo(null);
         return;
+      } else {
+        setIsAdminView(false);
       }
 
       if (videoId) {
@@ -82,6 +86,8 @@ function MainApp() {
     };
 
     checkUrlRoute();
+    window.addEventListener('popstate', checkUrlRoute);
+    return () => window.removeEventListener('popstate', checkUrlRoute);
   }, []);
 
   // Update URL search params when activeVideo changes
@@ -137,15 +143,22 @@ function MainApp() {
         offset: currentOffset,
       });
 
+      const isDemoCategory = catName.toLowerCase() === 'all' || catName.toLowerCase() === 'entertainment';
+
       if (isInitial) {
-        setVideos(result.videos);
+        const initialList = isDemoCategory
+          ? [TEMPORARY_DEMO_VIDEO, ...result.videos.filter((v) => v.id !== TEMPORARY_DEMO_VIDEO.id)]
+          : result.videos;
+
+        setVideos(initialList);
         setOffset(result.videos.length);
+        setTotalCount(result.count + (isDemoCategory ? 1 : 0));
       } else {
         setVideos((prev) => [...prev, ...result.videos]);
         setOffset((prev) => prev + result.videos.length);
+        setTotalCount(result.count + (isDemoCategory ? 1 : 0));
       }
 
-      setTotalCount(result.count);
       setIsLoading(false);
       setIsLoadingMore(false);
     },
@@ -172,7 +185,7 @@ function MainApp() {
   const featuredVideo = useMemo(() => {
     if (selectedCategory.toLowerCase() !== 'all') return null;
     const explicitlyFeatured = videos.find((v) => v.featured);
-    return explicitlyFeatured || videos[0] || null;
+    return explicitlyFeatured || (videos.length > 1 ? videos.find((v) => v.id !== TEMPORARY_DEMO_VIDEO.id) || null : null);
   }, [videos, selectedCategory]);
 
   // Feed videos (excluding featured if displayed)
@@ -191,14 +204,19 @@ function MainApp() {
   // Render Admin View
   if (isAdminView) {
     return (
-      <AdminPlaceholder
-        onBack={() => {
+      <AdminPanel
+        onBackToSite={() => {
           setIsAdminView(false);
-          if (typeof window !== 'undefined' && window.location.hash === '#admin') {
-            window.location.hash = '';
+          if (typeof window !== 'undefined') {
+            if (window.location.pathname === '/admin') {
+              window.history.pushState({}, '', '/');
+            }
+            if (window.location.hash === '#admin') {
+              window.location.hash = '';
+            }
           }
+          loadVideos(selectedCategory, true);
         }}
-        onOpenConfig={() => setIsConfigOpen(true)}
       />
     );
   }
@@ -375,7 +393,12 @@ function MainApp() {
             isConnected={isConnected}
             onOpenConfig={() => setIsConfigOpen(true)}
             onSelectVideo={handleSelectVideo}
-            onNavigateToAdmin={() => setIsAdminView(true)}
+            onNavigateToAdmin={() => {
+              setIsAdminView(true);
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/admin');
+              }
+            }}
           />
         )}
 

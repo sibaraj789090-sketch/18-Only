@@ -4,6 +4,7 @@ import { Video } from '../types/database';
 import { formatViews, formatTimeAgo, formatDuration } from '../lib/formatters';
 import { resolveMediaUrl } from '../lib/supabase';
 import { isWatchLater, toggleWatchLater, isVideoLiked, toggleLikedVideo } from '../lib/storage';
+import { isDemoVideo, DEMO_BACKUP_THUMBNAIL } from '../lib/demoVideo';
 import { useToast } from './Toast';
 
 interface VideoCardProps {
@@ -19,7 +20,9 @@ export const VideoCard: React.FC<VideoCardProps> = ({ video, onSelectVideo, onSh
   const [savedToLater, setSavedToLater] = useState(() => isWatchLater(video.id));
   const [liked, setLiked] = useState(() => isVideoLiked(video.id));
 
-  const resolvedThumb = resolveMediaUrl(video.thumbnail_url, 'videos');
+  const resolvedThumb = isDemoVideo(video.id) && imgError
+    ? DEMO_BACKUP_THUMBNAIL
+    : resolveMediaUrl(video.thumbnail_url, 'videos');
   const author = video.author_name || '18+Only Creator';
   const durationText = formatDuration(video.duration);
 
@@ -81,6 +84,13 @@ export const VideoCard: React.FC<VideoCardProps> = ({ video, onSelectVideo, onSh
             <p className="text-xs font-medium text-slate-300 line-clamp-2 max-w-[85%]">
               {video.title}
             </p>
+          </div>
+        )}
+
+        {/* Temporary Demo Badge */}
+        {isDemoVideo(video.id) && (
+          <div className="absolute top-2 left-2 bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 rounded shadow-lg tracking-wider uppercase">
+            Temporary Demo
           </div>
         )}
 

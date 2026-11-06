@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
-  FolderArchive,
   Clock,
   ThumbsUp,
   History,
   Database,
   Trash2,
   Play,
-  Cloud,
   ChevronRight,
-  ShieldAlert,
 } from 'lucide-react';
 import { Video, SupabaseConfig } from '../types/database';
 import {
@@ -28,7 +25,7 @@ interface LibraryViewProps {
   isConnected: boolean;
   onOpenConfig: () => void;
   onSelectVideo: (video: Video) => void;
-  onNavigateToAdmin: () => void;
+  onNavigateToAdmin?: () => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -325,23 +322,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             )}
           </div>
         )}
-      </div>
-
-      {/* Admin Architecture Portal Link (Clean, secure placeholder ready for /admin) */}
-      <div className="px-3 pt-6">
-        <button
-          onClick={onNavigateToAdmin}
-          className="w-full bg-[#0a0f1d] hover:bg-[#11192e] border border-slate-800/60 rounded-xl p-3 flex items-center justify-between text-left text-xs transition-colors"
-        >
-          <div className="flex items-center gap-2.5">
-            <ShieldAlert className="w-4 h-4 text-slate-500" />
-            <div>
-              <span className="font-semibold text-slate-300">Admin Architecture</span>
-              <p className="text-[11px] text-slate-500">System gate ready for /admin</p>
-            </div>
-          </div>
-          <ChevronRight className="w-4 h-4 text-slate-600" />
-        </button>
       </div>
     </div>
   );
