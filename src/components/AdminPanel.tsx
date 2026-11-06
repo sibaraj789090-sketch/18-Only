@@ -34,6 +34,7 @@ import {
   deleteAdminCategory,
   uploadToStorage,
   fetchCategories,
+  resetAdminPassword,
 } from '../lib/supabase';
 import { useToast } from './Toast';
 
@@ -153,6 +154,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setLoginPassword('');
     } else {
       setLoginError(res.error || 'Authentication failed. Access restricted to authorized admins.');
+    }
+  };
+
+  // Handle Forgot Password
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const handleForgotPassword = async () => {
+    if (!loginEmail.trim()) {
+      setLoginError('Please enter your email above first to receive the reset link.');
+      return;
+    }
+    setIsResettingPassword(true);
+    setLoginError('');
+    const res = await resetAdminPassword(loginEmail);
+    setIsResettingPassword(false);
+    if (res.success) {
+      showToast(res.message);
+    } else {
+      setLoginError(res.message);
     }
   };
 
@@ -429,7 +448,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Admin Email
+                Admin Email / Gmail
               </label>
               <input
                 type="email"
@@ -437,15 +456,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="admin@cardingx.in"
+                placeholder="yourname@gmail.com or admin@cardingx.in"
                 className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Admin Password
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isResettingPassword}
+                  className="text-[11px] text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+                >
+                  {isResettingPassword ? 'Sending...' : 'Forgot / Reset Password?'}
+                </button>
+              </div>
               <input
                 type="password"
                 autoComplete="current-password"
@@ -455,6 +484,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 placeholder="••••••••••••"
                 className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500 transition-colors"
               />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Enter the password you created in your Supabase Authentication dashboard.
+              </p>
             </div>
 
             <button

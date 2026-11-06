@@ -630,6 +630,22 @@ export async function signInAdmin(
     }
 
     if (!isAuthorized) {
+      try {
+        const { count } = await supabase
+          .from('admin_users')
+          .select('*', { count: 'exact', head: true });
+
+        // If the table is empty (initial project setup), auto-register the authenticated user
+        if (count === 0 || count === null) {
+          await supabase.from('admin_users').insert([
+            { id: data.user.id, email: cleanEmail, role: 'admin' }
+          ]);
+          isAuthorized = true;
+        }
+      } catch {}
+    }
+
+    if (!isAuthorized) {
       // If table exists but user is not in admin_users, reject access
       await supabase.auth.signOut();
       return {
@@ -642,6 +658,26 @@ export async function signInAdmin(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Login failed';
     return { success: false, error: message };
+  }
+}
+
+export async function resetAdminPassword(email: string): Promise<{ success: boolean; message: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { success: false, message: 'Supabase client is not configured.' };
+  }
+
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/admin/siba` : undefined,
+    });
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    return { success: true, message: 'Password reset email sent! Check your Gmail inbox.' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to send reset email';
+    return { success: false, message: msg };
   }
 }
 
