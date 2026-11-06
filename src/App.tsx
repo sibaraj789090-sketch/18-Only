@@ -23,14 +23,13 @@ import { SearchView } from './components/SearchView';
 import { ExploreView } from './components/ExploreView';
 import { LibraryView } from './components/LibraryView';
 import { BottomNav, TabType } from './components/BottomNav';
-import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ShareModal } from './components/ShareModal';
 import { AdminPanel } from './components/AdminPanel';
 import { AdBanner } from './components/AdBanner';
+import { initAdPopunder } from './lib/adPopunder';
 import {
   Loader2,
   RefreshCw,
-  Database,
   Film,
   AlertCircle,
   Sparkles,
@@ -39,11 +38,14 @@ import {
 function MainApp() {
   const { showToast } = useToast();
 
+  useEffect(() => {
+    initAdPopunder();
+  }, []);
+
   // Navigation & View State
   const [currentTab, setCurrentTab] = useState<TabType>('home');
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [isAdminView, setIsAdminView] = useState(false);
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [shareVideo, setShareVideo] = useState<Video | null>(null);
 
   // Supabase State
@@ -258,7 +260,6 @@ function MainApp() {
           }
           loadVideos(selectedCategory, true);
         }}
-        onOpenConfig={() => setIsConfigOpen(true)}
         isConfigured={config.isConfigured}
       />
     );
@@ -280,12 +281,9 @@ function MainApp() {
     <div className="min-h-screen bg-[#06090e] text-[#f1f5f9] flex flex-col font-['Outfit']">
       {/* Mobile container - centered frame for high-end preview and responsive mobile on phones */}
       <div className="w-full max-w-md mx-auto min-h-screen flex flex-col bg-[#06090e] shadow-2xl relative">
-        {/* Header (18+Only Brand + Search + DB Status) */}
+        {/* Header (18+Only Brand + Search) */}
         <Header
           onOpenSearch={() => setCurrentTab('search')}
-          onOpenConfig={() => setIsConfigOpen(true)}
-          config={config}
-          isConnected={isConnected}
         />
 
         {/* Tab 1: Home View */}
@@ -298,6 +296,9 @@ function MainApp() {
               onSelectCategory={handleCategorySelect}
               isLoading={isLoading && categories.length <= 1}
             />
+
+            {/* Top Header Sponsor Ad Banner */}
+            <AdBanner placement="header" variant={1} />
 
             {/* Featured Video Section */}
             {!isLoading && featuredVideo && selectedCategory.toLowerCase() === 'all' && (
@@ -344,12 +345,18 @@ function MainApp() {
                         onSelectVideo={handleSelectVideo}
                         onShare={handleOpenShare}
                       />
-                      {/* In-feed Sponsored Ad Banner after every 3 videos */}
-                      {(idx + 1) % 3 === 0 && (
-                        <AdBanner placement="feed" />
+                      {/* In-feed Sponsored Ad Banner placed every 2 videos with alternating creatives */}
+                      {(idx + 1) % 2 === 0 && (
+                        <AdBanner
+                          placement="feed"
+                          variant={((idx / 2) % 3 + 1) as 1 | 2 | 3}
+                        />
                       )}
                     </React.Fragment>
                   ))}
+
+                  {/* Interstitial Ad Banner before Load More */}
+                  <AdBanner placement="compact" variant={3} className="my-3" />
 
                   {/* Infinite Scroll / Load More Button */}
                   {videos.length < totalCount && (
@@ -372,32 +379,23 @@ function MainApp() {
                   )}
                 </div>
               ) : (
-                /* Empty Database State with Helpful Action */
+                /* Clean Empty Feed State for Normal Public Users */
                 <div className="py-16 px-4 text-center bg-[#090e1a] rounded-2xl border border-slate-800/80 my-4 shadow-inner">
                   <div className="w-14 h-14 rounded-full bg-red-950/40 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-3">
                     <Film className="w-6 h-6" />
                   </div>
                   <h3 className="text-sm font-bold text-white mb-1">
-                    No Videos in Supabase Database Yet
+                    No Videos Available Yet
                   </h3>
                   <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed mb-4">
-                    {config.isConfigured
-                      ? 'Connected to your Supabase project! No published videos were found in the "videos" table.'
-                      : 'Please configure your Supabase Project URL and Anon Key to stream videos.'}
+                    New content is currently being uploaded and processed. Please check back soon or try selecting another category.
                   </p>
                   <div className="flex flex-col gap-2 max-w-xs mx-auto">
                     <button
-                      onClick={() => setIsConfigOpen(true)}
-                      className="py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Database className="w-3.5 h-3.5" />
-                      <span>Configure Supabase & View SQL Schema</span>
-                    </button>
-                    <button
                       onClick={() => loadVideos(selectedCategory, true)}
-                      className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                      className="py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl shadow-md transition-colors flex items-center justify-center gap-1.5"
                     >
-                      <RefreshCw className="w-3 h-3" />
+                      <RefreshCw className="w-3.5 h-3.5" />
                       <span>Refresh Feed</span>
                     </button>
                   </div>
@@ -437,9 +435,6 @@ function MainApp() {
         {currentTab === 'library' && (
           <LibraryView
             allVideos={videos}
-            config={config}
-            isConnected={isConnected}
-            onOpenConfig={() => setIsConfigOpen(true)}
             onSelectVideo={handleSelectVideo}
             onOpenAdmin={handleOpenAdmin}
           />
@@ -450,18 +445,6 @@ function MainApp() {
 
         {/* Bottom Navigation (Home, Explore, Search, Library) */}
         <BottomNav currentTab={currentTab} onChangeTab={setCurrentTab} />
-
-        {/* Supabase Connection & SQL Diagnostic Modal */}
-        <SupabaseConfigModal
-          isOpen={isConfigOpen}
-          onClose={() => setIsConfigOpen(false)}
-          config={config}
-          onConfigUpdated={() => {
-            initSupabase();
-            loadVideos(selectedCategory, true);
-          }}
-          onOpenAdmin={handleOpenAdmin}
-        />
 
         {/* Share Video Modal */}
         <ShareModal

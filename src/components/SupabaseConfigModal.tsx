@@ -29,7 +29,7 @@ interface SupabaseConfigModalProps {
   onOpenAdmin?: () => void;
 }
 
-const SUPABASE_SCHEMA_SQL = `-- =========================================================
+export const SUPABASE_SCHEMA_SQL = `-- =========================================================
 -- 18+Only Supabase Database Schema & Storage Configuration
 -- Run this in the Supabase Dashboard -> SQL Editor
 -- =========================================================

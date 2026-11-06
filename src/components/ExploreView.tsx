@@ -105,7 +105,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       </div>
 
       {/* Sponsored Ad Banner in Explore */}
-      <AdBanner placement="explore" />
+      <AdBanner placement="explore" variant={1} />
 
       {/* Trending Section */}
       <div className="px-3 pt-2">
@@ -118,14 +118,22 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         {trendingVideos.length > 0 ? (
           <div className="space-y-4">
-            {trendingVideos.map((video) => (
-              <VideoCard
-                key={video.id}
-                video={video}
-                onSelectVideo={onSelectVideo}
-                onShare={onShareVideo}
-              />
+            {trendingVideos.map((video, idx) => (
+              <React.Fragment key={video.id}>
+                <VideoCard
+                  video={video}
+                  onSelectVideo={onSelectVideo}
+                  onShare={onShareVideo}
+                />
+                {/* Ad placement between trending cards */}
+                {(idx + 1) % 2 === 0 && (
+                  <AdBanner placement="feed" variant={((idx % 3) + 1) as 1 | 2 | 3} />
+                )}
+              </React.Fragment>
             ))}
+
+            {/* Bottom Explore Sponsor Banner */}
+            <AdBanner placement="compact" variant={2} className="mt-3" />
           </div>
         ) : (
           <div className="p-8 text-center bg-[#0d1424] rounded-2xl border border-slate-800/60 my-2">

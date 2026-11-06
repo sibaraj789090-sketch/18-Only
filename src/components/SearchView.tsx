@@ -167,6 +167,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
           </div>
         )}
 
+        {/* Top Sponsor Strip in Search */}
+        <AdBanner placement="compact" variant={1} className="mb-3" />
+
         {/* Search Results Summary */}
         <div className="flex items-center justify-between pb-3 px-1 text-xs text-slate-400">
           <span>
@@ -189,15 +192,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   onSelectVideo={onSelectVideo}
                   onShare={onShareVideo}
                 />
-                {(idx + 1) % 3 === 0 && (
-                  <AdBanner placement="feed" />
+                {/* Regular sponsored placement every 2 search results */}
+                {(idx + 1) % 2 === 0 && (
+                  <AdBanner placement="feed" variant={((idx % 3) + 1) as 1 | 2 | 3} />
                 )}
               </React.Fragment>
             ))}
           </div>
         ) : (
           /* Empty Search State */
-          <div className="py-16 text-center px-4">
+          <div className="py-12 text-center px-4">
             <div className="w-14 h-14 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto mb-3">
               <Search className="w-6 h-6" />
             </div>
@@ -214,6 +218,9 @@ export const SearchView: React.FC<SearchViewProps> = ({
             >
               Reset Filters
             </button>
+
+            {/* Sponsored Offer in Empty Search */}
+            <AdBanner placement="feed" variant={2} className="mt-6 text-left" />
           </div>
         )}
       </div>

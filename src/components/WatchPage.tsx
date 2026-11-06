@@ -183,7 +183,7 @@ export const WatchPage: React.FC<WatchPageProps> = ({
           <div className="leading-tight">
             <span className="font-bold">Temporary Demo Video:</span>
             <span className="text-amber-200/90 ml-1">
-              Not saved to Supabase. Created for testing mobile playback & HilltopAds VAST 3.0 pre-roll ad integration.
+              Sample preview stream. Created for testing mobile video streaming and partner ad playback.
             </span>
           </div>
         </div>
@@ -310,7 +310,10 @@ export const WatchPage: React.FC<WatchPageProps> = ({
       </div>
 
       {/* Promoted Ad Slot Under Video Player */}
-      <AdBanner placement="watch" />
+      <AdBanner placement="watch" variant={1} />
+
+      {/* Additional Sponsor Banner Above Comments */}
+      <AdBanner placement="compact" variant={2} className="mx-4 my-2" />
 
       {/* Comments Section */}
       <section className="px-4 py-3 border-t border-slate-900/80">
@@ -363,25 +366,32 @@ export const WatchPage: React.FC<WatchPageProps> = ({
               No comments yet. Be the first to share your thoughts!
             </p>
           ) : (
-            comments.map((comment) => (
-              <div key={comment.id} className="flex items-start gap-2.5 text-xs">
-                <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-300 shrink-0 text-[10px]">
-                  {comment.user_name.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-slate-200 truncate">
-                      {comment.user_name}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      {formatTimeAgo(comment.created_at)}
-                    </span>
+            comments.map((comment, cIdx) => (
+              <React.Fragment key={comment.id}>
+                <div className="flex items-start gap-2.5 text-xs">
+                  <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-300 shrink-0 text-[10px]">
+                    {comment.user_name.slice(0, 1).toUpperCase()}
                   </div>
-                  <p className="text-slate-300 mt-0.5 leading-relaxed break-words">
-                    {comment.comment_text}
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-200 truncate">
+                        {comment.user_name}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {formatTimeAgo(comment.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 mt-0.5 leading-relaxed break-words">
+                      {comment.comment_text}
+                    </p>
+                  </div>
                 </div>
-              </div>
+
+                {/* In-comment Sponsored Ad Placement */}
+                {cIdx === 1 && (
+                  <AdBanner placement="compact" variant={3} className="my-2" />
+                )}
+              </React.Fragment>
             ))
           )}
         </div>
@@ -428,8 +438,10 @@ export const WatchPage: React.FC<WatchPageProps> = ({
                 </div>
               </div>
 
-              {/* In-stream Ad after second related video */}
-              {idx === 1 && <AdBanner placement="feed" className="my-2" />}
+              {/* In-stream Ad after second and fourth related videos */}
+              {(idx === 1 || idx === 3) && (
+                <AdBanner placement="feed" variant={((idx % 3) + 1) as 1 | 2 | 3} className="my-2" />
+              )}
             </React.Fragment>
           ))}
         </div>

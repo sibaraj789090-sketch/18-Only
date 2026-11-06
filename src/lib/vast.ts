@@ -9,6 +9,10 @@ export const GOOGLE_SAMPLE_VAST_TAG_URL =
 export const HILLTOPADS_VAST_TAG_URL =
   'https://expensive-pollution.com/dumOF/z.dHGNNwvuZTGVUi/keemp9EuHZFU/lik/P/T/cd2TMxDGA/5/NnTicqtFNkzfY/wKM/D/kT2vMrQj';
 
+export const PTEKUWINY_AD_URL_1 = 'https://ptekuwiny.pro/412';
+export const PTEKUWINY_AD_URL_2 = 'https://ptekuwiny.pro/417';
+export const PTEKUWINY_DIRECT_URL = PTEKUWINY_AD_URL_1;
+
 export const SHAMEFUL_FARM_AD_SCRIPT_URL_1 =
   '//shameful-farm.com/bvX.VHswdrGVlb0MYbWacn/Tenmx9euFZ_UblTkVPET/cp2_MvDCEy4CMlz/MTtONqzTYowCMWTEgbzhNIw-';
 

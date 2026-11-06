@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>18+Only - Mobile Video Streaming</title>
-    <meta name="description" content="Mobile-first video streaming platform inspired by YouTube with dark theme, dynamic categories, search, comments, and Supabase integration." />
+    <meta name="description" content="Mobile-first video streaming platform inspired by YouTube with dark theme, dynamic categories, search, comments, and fast video delivery." />
     <meta property="og:title" content="18+Only - Mobile Video Streaming" />
-    <meta property="og:description" content="Mobile-first video streaming platform inspired by YouTube with dark theme, dynamic categories, search, comments, and Supabase integration." />
+    <meta property="og:description" content="Mobile-first video streaming platform inspired by YouTube with dark theme, dynamic categories, search, comments, and fast video delivery." />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#06090e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,47 +15,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Google IMA SDK for HTML5 VAST ad integration -->
-    <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
-    <!-- HilltopAds / Ad Network Multi-Placement Script 1 -->
+    <!-- Suppress third-party cross-origin script errors -->
     <script>
-      (function(opd){
-        var d = document,
-            s = d.createElement('script'),
-            l = d.currentScript || d.scripts[d.scripts.length - 1];
-        s.settings = opd || {};
-        s.src = "\/\/shameful-farm.com\/bvX.VHswdrGVlb0MYbWacn\/Tenmx9euFZ_UblTkVPET\/cp2_MvDCEy4CMlz\/MTtONqzTYowCMWTEgbzhNIw-";
-        s.async = true;
-        s.referrerPolicy = 'no-referrer-when-downgrade';
-        l.parentNode.insertBefore(s, l);
-      })({});
+      (function() {
+        window.addEventListener('error', function(event) {
+          if (!event || event.message === 'Script error.' || !event.filename || event.filename.includes('shameful-farm') || event.filename.includes('ptekuwiny') || event.filename.includes('ima')) {
+            if (event.preventDefault) event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+        window.onerror = function(msg, url) {
+          if (msg === 'Script error.' || !url || url.includes('shameful-farm') || url.includes('ptekuwiny') || url.includes('ima')) {
+            return true;
+          }
+        };
+      })();
     </script>
-    <!-- HilltopAds / Ad Network Multi-Placement Script 2 -->
-    <script>
-      (function(ytks){
-        var d = document,
-            s = d.createElement('script'),
-            l = d.currentScript || d.scripts[d.scripts.length - 1];
-        s.settings = ytks || {};
-        s.src = "\/\/shameful-farm.com\/bpXRVDs.dXGOlg0VYKWFcQ\/KeymW9tuYZCU\/lOkoPOT\/c\/2nMpDiEr4MNfjKEXtTN-zFYXw\/MmTngt2RNTQa";
-        s.async = true;
-        s.referrerPolicy = 'no-referrer-when-downgrade';
-        l.parentNode.insertBefore(s, l);
-      })({});
-    </script>
-    <!-- HilltopAds / Ad Network Multi-Placement Script 3 -->
-    <script>
-      (function(akjvik){
-        var d = document,
-            s = d.createElement('script'),
-            l = d.currentScript || d.scripts[d.scripts.length - 1];
-        s.settings = akjvik || {};
-        s.src = "\/\/shameful-farm.com\/bXXEV.sTdcGPli0iYJWmcS\/XeMmZ9FufZ\/UBlgk\/PzT\/cx2wMSDxES4JOhD-UitfNpzZY\/wPMWT\/gl4BOKQY";
-        s.async = true;
-        s.referrerPolicy = 'no-referrer-when-downgrade';
-        l.parentNode.insertBefore(s, l);
-      })({});
-    </script>
+    <!-- Google IMA SDK for HTML5 VAST ad integration (loaded asynchronously) -->
+    <script async src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
     <!-- Purge any legacy Service Workers or cached application shells from previous projects on this domain -->
     <script>
       (function() {

@@ -26,6 +26,10 @@ import {
   Sliders,
   PlaySquare,
   HelpCircle,
+  Database,
+  Copy,
+  Terminal,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   getAdConfig,
@@ -53,18 +57,21 @@ import {
   fetchCategories,
   resetAdminPassword,
   DEFAULT_CATEGORIES,
+  getSupabaseCredentials,
+  saveSupabaseCredentials,
+  clearSupabaseCredentials,
+  testSupabaseConnection,
 } from '../lib/supabase';
+import { SUPABASE_SCHEMA_SQL } from './SupabaseConfigModal';
 import { useToast } from './Toast';
 
 interface AdminPanelProps {
   onBackToSite: () => void;
-  onOpenConfig?: () => void;
   isConfigured?: boolean;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   onBackToSite,
-  onOpenConfig,
   isConfigured = true,
 }) => {
   const { showToast } = useToast();
@@ -81,8 +88,62 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [adminVideos, setAdminVideos] = useState<Video[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [activeTab, setActiveTab] = useState<'videos' | 'new-video' | 'categories' | 'ads'>('videos');
+  const [activeTab, setActiveTab] = useState<'videos' | 'new-video' | 'categories' | 'ads' | 'database'>('videos');
   const [searchFilter, setSearchFilter] = useState('');
+
+  // Supabase Database Management State (Inside Admin Console Only)
+  const [dbCreds, setDbCreds] = useState(() => getSupabaseCredentials());
+  const [dbUrl, setDbUrl] = useState(() => getSupabaseCredentials().url || '');
+  const [dbAnonKey, setDbAnonKey] = useState(() => getSupabaseCredentials().anonKey || '');
+  const [isTestingDb, setIsTestingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<any | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showDbSetupOnLogin, setShowDbSetupOnLogin] = useState(false);
+
+  const handleTestDatabase = async () => {
+    setIsTestingDb(true);
+    try {
+      const results = await testSupabaseConnection();
+      setDbTestResult(results);
+      if (results.connected) {
+        showToast('Supabase connection verified!', 'success');
+      } else {
+        showToast('Supabase connection failed or tables missing', 'error');
+      }
+    } catch {
+      showToast('Error testing connection', 'error');
+    } finally {
+      setIsTestingDb(false);
+    }
+  };
+
+  const handleSaveDatabaseCredentials = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!dbUrl.trim() || !dbAnonKey.trim()) {
+      showToast('Please enter both Supabase URL and Anon Key', 'error');
+      return;
+    }
+    saveSupabaseCredentials(dbUrl.trim(), dbAnonKey.trim());
+    setDbCreds(getSupabaseCredentials());
+    showToast('Supabase credentials saved successfully!', 'success');
+    handleTestDatabase();
+  };
+
+  const handleClearDatabaseCredentials = () => {
+    clearSupabaseCredentials();
+    setDbUrl('');
+    setDbAnonKey('');
+    setDbCreds(getSupabaseCredentials());
+    setDbTestResult(null);
+    showToast('Supabase credentials cleared', 'info');
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
+    setCopiedSql(true);
+    showToast('SQL Schema copied to clipboard!', 'success');
+    setTimeout(() => setCopiedSql(false), 2500);
+  };
 
   // Ad Settings State
   const [adConfig, setAdConfigState] = useState<AdConfig>(getAdConfig());
@@ -542,19 +603,62 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             onSubmit={handleLogin}
             className="bg-[#0e1628] rounded-2xl border border-slate-800 p-5 space-y-3.5 shadow-2xl"
           >
-            {!isConfigured && onOpenConfig && (
-              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-2">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <span className="leading-tight">Supabase is not configured yet.</span>
+            {!dbCreds.isConfigured && (
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="leading-tight">Supabase database is not configured.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDbSetupOnLogin(!showDbSetupOnLogin)}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] rounded-lg shrink-0 transition-colors"
+                  >
+                    {showDbSetupOnLogin ? 'Hide Setup' : 'Setup Database'}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={onOpenConfig}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] rounded-lg shrink-0 transition-colors"
-                >
-                  Setup Keys
-                </button>
+
+                {showDbSetupOnLogin && (
+                  <div className="pt-2 border-t border-amber-800/40 space-y-2 text-slate-200">
+                    <div>
+                      <label className="text-[10px] text-amber-300 font-medium block mb-1">
+                        Project URL
+                      </label>
+                      <input
+                        type="url"
+                        value={dbUrl}
+                        onChange={(e) => setDbUrl(e.target.value)}
+                        placeholder="https://xyzcompany.supabase.co"
+                        className="w-full bg-[#06090e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-amber-300 font-medium block mb-1">
+                        Anon Public Key
+                      </label>
+                      <input
+                        type="text"
+                        value={dbAnonKey}
+                        onChange={(e) => setDbAnonKey(e.target.value)}
+                        placeholder="eyJhbGciOi..."
+                        className="w-full bg-[#06090e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSaveDatabaseCredentials();
+                          setShowDbSetupOnLogin(false);
+                        }}
+                        className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-lg"
+                      >
+                        Save &amp; Connect
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -700,7 +804,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 bg-[#0d1424] p-1.5 rounded-xl border border-slate-800 text-xs font-semibold gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 bg-[#0d1424] p-1.5 rounded-xl border border-slate-800 text-xs font-semibold gap-1.5">
           <button
             onClick={() => {
               setActiveTab('videos');
@@ -758,6 +862,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 adConfig.enabled ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-slate-500'
               }`}
               title={adConfig.enabled ? 'Ads Active' : 'Ads Disabled'}
+            />
+          </button>
+
+          <button
+            onClick={() => setActiveTab('database')}
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors relative col-span-2 sm:col-span-1 ${
+              activeTab === 'database'
+                ? 'bg-cyan-600 text-white shadow'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 shrink-0 text-cyan-300" />
+            <span className="truncate">Database</span>
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                dbCreds.isConfigured ? 'bg-emerald-400 shadow-xs shadow-emerald-400' : 'bg-amber-400'
+              }`}
+              title={dbCreds.isConfigured ? 'Database Configured' : 'Setup Required'}
             />
           </button>
         </div>
@@ -1557,6 +1679,227 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span>Preview On Video Player</span>
                 <ExternalLink className="w-3 h-3 text-red-400" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 5: Supabase Database & Backend Management */}
+        {activeTab === 'database' && (
+          <div className="space-y-4">
+            {/* Top Status & Security Card */}
+            <div className="bg-[#0e1628] border border-cyan-900/40 rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-800/60 flex items-center justify-center shrink-0 text-cyan-400">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Supabase Database Management</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400">
+                        <Lock className="w-2.5 h-2.5" /> Private Admin Only
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Configure your Supabase database URL, Anon key, test connection health, and view schema SQL. All database controls are 100% private.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                      dbCreds.isConfigured
+                        ? 'bg-emerald-950/60 border-emerald-800/80 text-emerald-400'
+                        : 'bg-amber-950/60 border-amber-800/80 text-amber-400'
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        dbCreds.isConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      }`}
+                    />
+                    {dbCreds.isConfigured ? 'Connected to Supabase' : 'Setup Required'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Credentials Configuration Form */}
+            <form onSubmit={handleSaveDatabaseCredentials} className="bg-[#0e1628] border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  <span>Supabase API Credentials</span>
+                </h4>
+                {dbCreds.isConfigured && (
+                  <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
+                    {dbCreds.url}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                    Supabase Project URL
+                  </label>
+                  <input
+                    type="url"
+                    value={dbUrl}
+                    onChange={(e) => setDbUrl(e.target.value)}
+                    placeholder="https://your-project-id.supabase.co"
+                    className="w-full bg-[#06090e] border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-hidden focus:border-cyan-500 transition-colors"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Found in your Supabase project dashboard under Settings &gt; API &gt; Project URL.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                    Supabase Anon Public Key
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={dbAnonKey}
+                    onChange={(e) => setDbAnonKey(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    className="w-full bg-[#06090e] border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-hidden focus:border-cyan-500 transition-colors resize-none"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Found under Settings &gt; API &gt; Project API keys (anon public key).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-md shadow-cyan-900/30"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save Credentials</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTestDatabase}
+                    disabled={isTestingDb}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isTestingDb ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                    )}
+                    <span>{isTestingDb ? 'Testing...' : 'Test Connection'}</span>
+                  </button>
+                </div>
+
+                {dbCreds.isConfigured && (
+                  <button
+                    type="button"
+                    onClick={handleClearDatabaseCredentials}
+                    className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors px-2 py-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear Credentials</span>
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Test Connection Results Card */}
+            {dbTestResult && (
+              <div
+                className={`border rounded-2xl p-4 transition-all animate-in fade-in ${
+                  dbTestResult.success
+                    ? 'bg-emerald-950/20 border-emerald-900/50'
+                    : 'bg-rose-950/20 border-rose-900/50'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {dbTestResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h4
+                        className={`text-xs font-bold ${
+                          dbTestResult.success ? 'text-emerald-300' : 'text-rose-300'
+                        }`}
+                      >
+                        {dbTestResult.success
+                          ? 'Database Connection Successful!'
+                          : 'Database Connection Diagnostic Notice'}
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                        {dbTestResult.message}
+                      </p>
+                    </div>
+
+                    {dbTestResult.tables && (
+                      <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {Object.entries(dbTestResult.tables).map(([tableName, status]) => (
+                          <div
+                            key={tableName}
+                            className={`p-2 rounded-xl border text-[11px] font-mono flex items-center justify-between ${
+                              status
+                                ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                                : 'bg-slate-900 border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <span>{tableName}</span>
+                            {status ? (
+                              <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                            ) : (
+                              <span className="text-[10px] text-amber-400">Missing</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SQL Schema Script Section */}
+            <div className="bg-[#0e1628] border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-cyan-400" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Supabase SQL Schema &amp; Storage Setup
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopySql}
+                  className="px-3 py-1.5 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                >
+                  {copiedSql ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Script'}</span>
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed">
+                If you created a new Supabase project, go to <span className="text-slate-200 font-semibold">Supabase Dashboard &gt; SQL Editor</span>, paste this script, and click <span className="text-cyan-300 font-semibold">Run</span>. It will automatically build the <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">videos</code>, <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">categories</code>, <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">comments</code>, and <code className="text-cyan-300 bg-black/40 px-1 py-0.5 rounded">admin_users</code> tables with public read access and the storage bucket.
+              </p>
+
+              <div className="relative">
+                <pre className="bg-[#06090e] border border-slate-800 rounded-xl p-3.5 text-[11px] font-mono text-cyan-200/90 overflow-x-auto max-h-56 leading-relaxed select-all">
+                  {SUPABASE_SCHEMA_SQL}
+                </pre>
+              </div>
             </div>
           </div>
         )}

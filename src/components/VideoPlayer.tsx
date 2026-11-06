@@ -600,7 +600,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onEnded, autoPl
             if (isExt) {
               setErrorMessage('Unable to load external video stream. The media host may be unreachable or restricting access.');
             } else {
-              setErrorMessage('Unable to load video stream from Supabase storage.');
+              setErrorMessage('Unable to load video stream. The media host may be unreachable or restricting access.');
             }
           }
         }}

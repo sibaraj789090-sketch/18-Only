@@ -3,13 +3,12 @@ import {
   Clock,
   ThumbsUp,
   History,
-  Database,
   Trash2,
   Play,
   ChevronRight,
   Shield,
 } from 'lucide-react';
-import { Video, SupabaseConfig } from '../types/database';
+import { Video } from '../types/database';
 import {
   getWatchHistory,
   clearWatchHistory,
@@ -19,21 +18,16 @@ import {
 } from '../lib/storage';
 import { formatTimeAgo, formatViews } from '../lib/formatters';
 import { useToast } from './Toast';
+import { AdBanner } from './AdBanner';
 
 interface LibraryViewProps {
   allVideos: Video[];
-  config: SupabaseConfig;
-  isConnected: boolean;
-  onOpenConfig: () => void;
   onSelectVideo: (video: Video) => void;
   onOpenAdmin?: () => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   allVideos,
-  config,
-  isConnected,
-  onOpenConfig,
   onSelectVideo,
   onOpenAdmin,
 }) => {
@@ -64,49 +58,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       <div className="px-4 pt-4 pb-2">
         <h1 className="text-lg font-bold text-white font-['Outfit']">Library</h1>
         <p className="text-xs text-slate-400">
-          Your watch history, saved playlists, and cloud connection
+          Your watch history, saved playlists, and bookmarks
         </p>
-      </div>
-
-      {/* Supabase Connection Status Banner */}
-      <div className="px-3 py-2">
-        <div
-          onClick={onOpenConfig}
-          className="bg-gradient-to-r from-[#0d1527] to-[#121c33] border border-slate-800 rounded-2xl p-3.5 cursor-pointer hover:border-slate-700 transition-colors shadow-md"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                  isConnected
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                }`}
-              >
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <span>Supabase Backend</span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                      isConnected
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-amber-500/20 text-amber-300'
-                    }`}
-                  >
-                    {isConnected ? 'Active' : 'Setup Required'}
-                  </span>
-                </h3>
-                <p className="text-[11px] text-slate-400 truncate max-w-[220px]">
-                  {config.url ? config.url.replace(/^https?:\/\//, '') : 'No Supabase URL set'}
-                </p>
-              </div>
-            </div>
-
-            <ChevronRight className="w-4 h-4 text-slate-500" />
-          </div>
-        </div>
       </div>
 
       {/* Cardingx Admin Portal Access Card */}
@@ -138,8 +91,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
       )}
 
+      {/* Library Top Sponsor Offer Banner */}
+      <AdBanner placement="compact" variant={1} className="mx-3 my-2" />
+
       {/* Tab Switcher for History, Liked, Watch Later */}
-      <div className="px-3 pt-3">
+      <div className="px-3 pt-2">
         <div className="flex items-center gap-2 bg-[#0d1424] p-1 rounded-xl border border-slate-800/80">
           <button
             onClick={() => setActiveTab('history')}
@@ -199,36 +155,42 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             {history.length > 0 ? (
               <div className="space-y-3">
                 {history.map((item, idx) => (
-                  <div
-                    key={`${item.video.id}-${idx}`}
-                    onClick={() => onSelectVideo(item.video)}
-                    className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
-                  >
-                    <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
-                      {item.video.thumbnail_url ? (
-                        <img
-                          src={item.video.thumbnail_url}
-                          alt={item.video.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-red-500">
-                          <Play className="w-5 h-5 fill-current" />
-                        </div>
-                      )}
+                  <React.Fragment key={`${item.video.id}-${idx}`}>
+                    <div
+                      onClick={() => onSelectVideo(item.video)}
+                      className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
+                    >
+                      <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
+                        {item.video.thumbnail_url ? (
+                          <img
+                            src={item.video.thumbnail_url}
+                            alt={item.video.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-red-500">
+                            <Play className="w-5 h-5 fill-current" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
+                          {item.video.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                          {item.video.author_name || '18+Only Creator'}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Watched {formatTimeAgo(item.watchedAt)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
-                        {item.video.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                        {item.video.author_name || '18+Only Creator'}
-                      </p>
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Watched {formatTimeAgo(item.watchedAt)}
-                      </p>
-                    </div>
-                  </div>
+
+                    {/* Sponsored Ad after 2nd History Item */}
+                    {idx === 1 && (
+                      <AdBanner placement="compact" variant={2} className="my-2" />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             ) : (
@@ -253,37 +215,43 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             {watchLater.length > 0 ? (
               <div className="space-y-3">
-                {watchLater.map((video) => (
-                  <div
-                    key={video.id}
-                    onClick={() => onSelectVideo(video)}
-                    className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
-                  >
-                    <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
-                      {video.thumbnail_url ? (
-                        <img
-                          src={video.thumbnail_url}
-                          alt={video.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-red-500">
-                          <Play className="w-5 h-5 fill-current" />
+                {watchLater.map((video, idx) => (
+                  <React.Fragment key={video.id}>
+                    <div
+                      onClick={() => onSelectVideo(video)}
+                      className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
+                    >
+                      <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
+                        {video.thumbnail_url ? (
+                          <img
+                            src={video.thumbnail_url}
+                            alt={video.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-red-500">
+                            <Play className="w-5 h-5 fill-current" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
+                          {video.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                          {video.author_name || '18+Only Creator'}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
+                          <span>{formatViews(video.views)}</span>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
-                        {video.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                        {video.author_name || '18+Only Creator'}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
-                        <span>{formatViews(video.views)}</span>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Sponsored Ad after 2nd Watch Later Item */}
+                    {idx === 1 && (
+                      <AdBanner placement="compact" variant={3} className="my-2" />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             ) : (
@@ -308,37 +276,43 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             {likedVideos.length > 0 ? (
               <div className="space-y-3">
-                {likedVideos.map((video) => (
-                  <div
-                    key={video.id}
-                    onClick={() => onSelectVideo(video)}
-                    className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
-                  >
-                    <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
-                      {video.thumbnail_url ? (
-                        <img
-                          src={video.thumbnail_url}
-                          alt={video.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-red-500">
-                          <Play className="w-5 h-5 fill-current" />
+                {likedVideos.map((video, idx) => (
+                  <React.Fragment key={video.id}>
+                    <div
+                      onClick={() => onSelectVideo(video)}
+                      className="flex items-center gap-3 bg-[#0d1424] p-2 rounded-xl border border-slate-800/60 cursor-pointer hover:border-slate-700 transition-colors"
+                    >
+                      <div className="w-28 aspect-video bg-black rounded-lg overflow-hidden shrink-0 relative">
+                        {video.thumbnail_url ? (
+                          <img
+                            src={video.thumbnail_url}
+                            alt={video.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-red-500">
+                            <Play className="w-5 h-5 fill-current" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
+                          {video.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                          {video.author_name || '18+Only Creator'}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
+                          <span>{formatViews(video.views)}</span>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug">
-                        {video.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                        {video.author_name || '18+Only Creator'}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
-                        <span>{formatViews(video.views)}</span>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Sponsored Ad after 2nd Liked Item */}
+                    {idx === 1 && (
+                      <AdBanner placement="compact" variant={1} className="my-2" />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             ) : (
