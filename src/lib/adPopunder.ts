@@ -1,25 +1,29 @@
 /**
  * Popunder & Direct Ad Network Integration
- * Handles smart popunder/tab opening for ad networks (ptekuwiny.pro / shameful-farm.com).
+ * Handles smart popunder / new tab opening for ad networks (HilltopAds, Monetag, or Custom Direct Links).
  * Features frequency capping, ignore elements, and graceful fallback.
  */
+import { getAdConfig, sanitizeAdUrl, DEFAULT_DIRECT_AD_URL } from './vast';
 
-const DEFAULT_POP_URL = 'https://ptekuwiny.pro/412';
 const STORAGE_LAST_POP = '18plus_last_pop_time';
-const POP_COOLDOWN_MS = 60 * 1000; // 60 seconds cooldown between pops
 
 let popInitialized = false;
 
-export function initAdPopunder(adUrl = DEFAULT_POP_URL) {
+export function initAdPopunder() {
   if (typeof window === 'undefined' || popInitialized) return;
   popInitialized = true;
 
   const handleInteraction = (e: MouseEvent | TouchEvent) => {
     try {
-      const target = (e.target as HTMLElement | null);
+      const config = getAdConfig();
+      // If user disabled popunders in Admin Panel, exit immediately
+      if (config.popunderEnabled === false) return;
+
+      const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // Ignore administrative buttons, inputs, modals, close buttons
+      // Ignore administrative buttons, inputs, modals, close buttons,
+      // and explicit ad banner cards/buttons so banner clicks open directly without duplicate tabs
       if (
         target.closest('input') ||
         target.closest('textarea') ||
@@ -27,23 +31,33 @@ export function initAdPopunder(adUrl = DEFAULT_POP_URL) {
         target.closest('[data-no-pop]') ||
         target.closest('.admin-portal') ||
         target.closest('.config-modal') ||
-        target.closest('button[aria-label="Close"]')
+        target.closest('button[aria-label="Close"]') ||
+        target.closest('button[aria-label="Close ad"]') ||
+        target.closest('.ad-banner-link') ||
+        target.closest('[data-ad-banner]')
       ) {
         return;
       }
 
       // Check frequency cooldown
+      const cooldownMs = (config.popunderCooldownSeconds || 60) * 1000;
       const now = Date.now();
       const lastPop = parseInt(localStorage.getItem(STORAGE_LAST_POP) || '0', 10);
-      if (now - lastPop < POP_COOLDOWN_MS) {
+      if (now - lastPop < cooldownMs) {
         return;
       }
+
+      const targetUrl = sanitizeAdUrl(
+        config.popunderUrl || config.directAdUrl,
+        DEFAULT_DIRECT_AD_URL
+      );
+      if (!targetUrl) return;
 
       // Record this trigger
       localStorage.setItem(STORAGE_LAST_POP, String(now));
 
       // Trigger pop in new tab
-      const win = window.open(adUrl, '_blank');
+      const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
       if (win) {
         win.blur?.();
         window.focus?.();
@@ -53,6 +67,6 @@ export function initAdPopunder(adUrl = DEFAULT_POP_URL) {
     }
   };
 
-  // Bind to touchstart and click across the document
+  // Bind to click across the document
   window.addEventListener('click', handleInteraction, { capture: true, passive: true });
 }

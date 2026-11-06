@@ -9,12 +9,41 @@ export const GOOGLE_SAMPLE_VAST_TAG_URL =
 export const HILLTOPADS_VAST_TAG_URL =
   'https://expensive-pollution.com/dumOF/z.dHGNNwvuZTGVUi/keemp9EuHZFU/lik/P/T/cd2TMxDGA/5/NnTicqtFNkzfY/wKM/D/kT2vMrQj';
 
-export const PTEKUWINY_AD_URL_1 = 'https://ptekuwiny.pro/412';
-export const PTEKUWINY_AD_URL_2 = 'https://ptekuwiny.pro/417';
-export const PTEKUWINY_DIRECT_URL = PTEKUWINY_AD_URL_1;
+export const DEFAULT_DIRECT_AD_URL =
+  'https://bold-consequence.com/bT3pVe0.PK3TpGv/b/mpV/JXZjDT0/3LNIjTAUxzOLDUke3FLfTmc/2EMjD-EV5PMhDVEk';
+export const DEFAULT_DIRECT_AD_URL_2 = DEFAULT_DIRECT_AD_URL;
 
-export const SHAMEFUL_FARM_AD_SCRIPT_URL_1 =
-  '//shameful-farm.com/bvX.VHswdrGVlb0MYbWacn/Tenmx9euFZ_UblTkVPET/cp2_MvDCEy4CMlz/MTtONqzTYowCMWTEgbzhNIw-';
+export const DEFAULT_POPUNDER_SCRIPT_SRC =
+  '//expensive-pollution.com/c-DT9.6ab/2B5glmScWgQV9VNuz/YBwYMtTSgw5dNUyj0O3oN/j-ARx_ODTmAKxp';
+
+// Backwards compatibility aliases
+export const PTEKUWINY_AD_URL_1 = DEFAULT_DIRECT_AD_URL;
+export const PTEKUWINY_AD_URL_2 = DEFAULT_DIRECT_AD_URL_2;
+export const PTEKUWINY_DIRECT_URL = DEFAULT_DIRECT_AD_URL;
+
+/**
+ * Sanitizes ad destination URLs to prevent opening expired or dead 404 domains (like ptekuwiny.pro).
+ */
+export function sanitizeAdUrl(url?: string | null, fallback = DEFAULT_DIRECT_AD_URL): string {
+  if (!url) return fallback;
+  const trimmed = url.trim();
+  if (
+    trimmed.includes('ptekuwiny.pro') ||
+    trimmed === 'https://hilltopads.com' ||
+    trimmed === 'https://hilltopads.com/publishers' ||
+    trimmed === '' ||
+    trimmed === 'about:blank'
+  ) {
+    return fallback;
+  }
+  // Ensure valid URL scheme
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
+export const SHAMEFUL_FARM_AD_SCRIPT_URL_1 = DEFAULT_POPUNDER_SCRIPT_SRC;
 
 export const SHAMEFUL_FARM_AD_SCRIPT_URL_2 =
   '//shameful-farm.com/bpXRVDs.dXGOlg0VYKWFcQ/KeymW9tuYZCU/lOkoPOT/c/2nMpDiEr4MNfjKEXtTN-zFYXw/MmTngt2RNTQa';
@@ -47,6 +76,11 @@ export interface AdConfig {
   bannerScriptUrl?: string;
   bannerScriptUrl2?: string;
   bannerScriptUrl3?: string;
+  directAdUrl?: string;
+  directAdUrl2?: string;
+  popunderEnabled?: boolean;
+  popunderUrl?: string;
+  popunderCooldownSeconds?: number;
 }
 
 const STORAGE_KEY_AD_CONFIG = '18plus_ad_config';
@@ -63,6 +97,11 @@ export const DEFAULT_AD_CONFIG: AdConfig = {
   bannerScriptUrl: SHAMEFUL_FARM_AD_SCRIPT_URL_1,
   bannerScriptUrl2: SHAMEFUL_FARM_AD_SCRIPT_URL_2,
   bannerScriptUrl3: SHAMEFUL_FARM_AD_SCRIPT_URL_3,
+  directAdUrl: DEFAULT_DIRECT_AD_URL,
+  directAdUrl2: DEFAULT_DIRECT_AD_URL_2,
+  popunderEnabled: true,
+  popunderUrl: DEFAULT_DIRECT_AD_URL,
+  popunderCooldownSeconds: 60,
 };
 
 export function getAdConfig(): AdConfig {
@@ -76,6 +115,10 @@ export function getAdConfig(): AdConfig {
       ? parsed.skipOffset
       : (typeof parsed.skipOffsetSeconds === 'number' ? parsed.skipOffsetSeconds : 5);
 
+    const directAdUrl = sanitizeAdUrl(parsed.directAdUrl, DEFAULT_DIRECT_AD_URL);
+    const directAdUrl2 = sanitizeAdUrl(parsed.directAdUrl2, DEFAULT_DIRECT_AD_URL_2);
+    const popunderUrl = sanitizeAdUrl(parsed.popunderUrl || directAdUrl, directAdUrl);
+
     return {
       enabled: parsed.enabled ?? true,
       tagUrl: (parsed.tagUrl && parsed.tagUrl.trim()) ? parsed.tagUrl.trim() : GOOGLE_SAMPLE_VAST_TAG_URL,
@@ -87,6 +130,11 @@ export function getAdConfig(): AdConfig {
       bannerScriptUrl: parsed.bannerScriptUrl || SHAMEFUL_FARM_AD_SCRIPT_URL_1,
       bannerScriptUrl2: parsed.bannerScriptUrl2 || SHAMEFUL_FARM_AD_SCRIPT_URL_2,
       bannerScriptUrl3: parsed.bannerScriptUrl3 || SHAMEFUL_FARM_AD_SCRIPT_URL_3,
+      directAdUrl,
+      directAdUrl2,
+      popunderEnabled: parsed.popunderEnabled ?? true,
+      popunderUrl,
+      popunderCooldownSeconds: typeof parsed.popunderCooldownSeconds === 'number' ? parsed.popunderCooldownSeconds : 60,
     };
   } catch {
     return DEFAULT_AD_CONFIG;
@@ -105,6 +153,9 @@ export function saveAdConfig(config: Partial<AdConfig>): AdConfig {
     allowFallback: fallback,
     skipOffset: skip,
     skipOffsetSeconds: skip,
+    directAdUrl: config.directAdUrl ? sanitizeAdUrl(config.directAdUrl, DEFAULT_DIRECT_AD_URL) : current.directAdUrl,
+    directAdUrl2: config.directAdUrl2 ? sanitizeAdUrl(config.directAdUrl2, DEFAULT_DIRECT_AD_URL_2) : current.directAdUrl2,
+    popunderUrl: config.popunderUrl ? sanitizeAdUrl(config.popunderUrl, current.directAdUrl || DEFAULT_DIRECT_AD_URL) : current.popunderUrl,
   };
   if (typeof window !== 'undefined') {
     try {

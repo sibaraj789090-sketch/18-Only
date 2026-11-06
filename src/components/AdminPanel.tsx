@@ -38,6 +38,8 @@ import {
   testVastTag,
   GOOGLE_SAMPLE_VAST_TAG_URL,
   HILLTOPADS_VAST_TAG_URL,
+  DEFAULT_DIRECT_AD_URL,
+  DEFAULT_DIRECT_AD_URL_2,
   AdConfig,
 } from '../lib/vast';
 import { Video, Category } from '../types/database';
@@ -1582,7 +1584,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       type="text"
                       value={adConfig.bannerScriptUrl || ''}
                       onChange={(e) => setAdConfigState({ ...adConfig, bannerScriptUrl: e.target.value })}
-                      placeholder="//shameful-farm.com/bvX..."
+                      placeholder="//expensive-pollution.com/c-DT9.6ab/..."
                       className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
                     />
                   </div>
@@ -1640,6 +1642,155 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span><strong>Explore & Mobile Bottom:</strong> Trending section & sticky floating bar</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Ad Link / Smartlink & Popunder Card */}
+            <div className="bg-[#0e1628] border border-slate-800 rounded-2xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-red-950/60 text-red-400 border border-red-800/60">
+                    <ExternalLink className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Direct Ad Link & Banner Click Destination</span>
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        Configurable
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      When viewers click any sponsored banner or offer, this URL opens in a new tab.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Notice about expired / dead links */}
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200/90 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-amber-300">
+                      Ad Link & "Not Found" Fix:
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-slate-300">
+                      Previously, ad clicks were directing to an expired endpoint (<code className="text-amber-300 font-mono">ptekuwiny.pro/412</code>) which returned "Not Found". Defaults have been updated to reliable working sponsor links. You can also paste your own active <strong>HilltopAds Direct Link (Smartlink)</strong> below!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Primary Direct Ad Link */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                    <span>Primary Direct Ad URL / Smartlink (Main Banner Clicks)</span>
+                    <span className="text-[10px] text-slate-500 font-normal">HilltopAds / Monetag / PropellerAds</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={adConfig.directAdUrl || ''}
+                      onChange={(e) => setAdConfigState({ ...adConfig, directAdUrl: e.target.value })}
+                      placeholder="https://bold-consequence.com/bT3pVe0..."
+                      className="flex-1 bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const testUrl = (adConfig.directAdUrl || DEFAULT_DIRECT_AD_URL).trim();
+                        window.open(testUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 transition-colors"
+                      title="Open in new tab to test"
+                    >
+                      <span>Test Link</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Secondary Direct Ad Link */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                    <span>Secondary Direct Link (Variant 2 Offer)</span>
+                    <span className="text-[10px] text-slate-500 font-normal">Optional rotation link</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={adConfig.directAdUrl2 || ''}
+                      onChange={(e) => setAdConfigState({ ...adConfig, directAdUrl2: e.target.value })}
+                      placeholder="https://hilltopads.com/publishers"
+                      className="flex-1 bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const testUrl = (adConfig.directAdUrl2 || DEFAULT_DIRECT_AD_URL_2).trim();
+                        window.open(testUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 transition-colors"
+                      title="Open in new tab to test"
+                    >
+                      <span>Test Link</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Popunder Options */}
+                <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-white block">
+                        Background Tap Popunder (New Tab on Page Click)
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Opens ad offer in the background when visitor taps anywhere on the app.
+                      </span>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={adConfig.popunderEnabled ?? true}
+                        onChange={(e) => setAdConfigState({ ...adConfig, popunderEnabled: e.target.checked })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                  </div>
+
+                  {adConfig.popunderEnabled && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          Popunder Destination URL (Leave blank to use primary link)
+                        </label>
+                        <input
+                          type="text"
+                          value={adConfig.popunderUrl || ''}
+                          onChange={(e) => setAdConfigState({ ...adConfig, popunderUrl: e.target.value })}
+                          placeholder="Same as primary direct URL"
+                          className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          Cooldown Period (seconds between pops per user)
+                        </label>
+                        <input
+                          type="number"
+                          min="10"
+                          max="600"
+                          value={adConfig.popunderCooldownSeconds || 60}
+                          onChange={(e) => setAdConfigState({ ...adConfig, popunderCooldownSeconds: parseInt(e.target.value, 10) || 60 })}
+                          className="w-full bg-[#080d19] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
