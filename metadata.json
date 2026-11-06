@@ -1,0 +1,6 @@
+{
+  "name": "18+Only - Mobile Video Streaming",
+  "description": "Mobile-first video streaming platform inspired by YouTube with dark theme, dynamic categories, search, comments, and Supabase integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
