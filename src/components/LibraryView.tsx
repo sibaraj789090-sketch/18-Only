@@ -25,7 +25,6 @@ interface LibraryViewProps {
   isConnected: boolean;
   onOpenConfig: () => void;
   onSelectVideo: (video: Video) => void;
-  onNavigateToAdmin?: () => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -34,7 +33,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   isConnected,
   onOpenConfig,
   onSelectVideo,
-  onNavigateToAdmin,
 }) => {
   const { showToast } = useToast();
   const [history, setHistory] = useState<HistoryItem[]>([]);

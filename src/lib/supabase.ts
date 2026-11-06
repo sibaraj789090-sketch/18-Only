@@ -566,13 +566,41 @@ export async function signInAdmin(
     }
 
     // Verify authorized presence in admin_users table
-    const { data: adminRecord, error: adminErr } = await supabase
-      .from('admin_users')
-      .select('*')
-      .or(`email.eq.${email.trim()},id.eq.${data.user.id}`)
-      .maybeSingle();
+    const cleanEmail = email.trim().toLowerCase();
+    let isAuthorized = false;
 
-    if (adminErr || !adminRecord) {
+    try {
+      const { data: byEmail } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+      if (byEmail) isAuthorized = true;
+    } catch {}
+
+    if (!isAuthorized) {
+      try {
+        const { data: byId } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        if (byId) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
+      try {
+        const { data: byUserId } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+        if (byUserId) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
       // If table exists but user is not in admin_users, reject access
       await supabase.auth.signOut();
       return {
@@ -602,17 +630,45 @@ export async function verifyCurrentAdminUser(): Promise<any | null> {
   if (!supabase) return null;
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) return null;
 
-    // Verify admin role in admin_users table
-    const { data: adminRecord } = await supabase
-      .from('admin_users')
-      .select('*')
-      .or(`email.eq.${user.email},id.eq.${user.id}`)
-      .maybeSingle();
+    let isAuthorized = false;
 
-    if (!adminRecord) {
+    if (user.email) {
+      try {
+        const { data: byEmail } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('email', user.email.toLowerCase())
+          .maybeSingle();
+        if (byEmail) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
+      try {
+        const { data: byId } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (byId) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
+      try {
+        const { data: byUserId } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (byUserId) isAuthorized = true;
+      } catch {}
+    }
+
+    if (!isAuthorized) {
       return null;
     }
 

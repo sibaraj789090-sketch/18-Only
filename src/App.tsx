@@ -59,22 +59,29 @@ function MainApp() {
   const [offset, setOffset] = useState(0);
   const PAGE_SIZE = 10;
 
-  // Check initial URL parameters for deep linking (?v=id or #admin)
+  // Check initial URL parameters for deep linking (?v=id or /admin/siba)
   useEffect(() => {
     const checkUrlRoute = async () => {
       if (typeof window === 'undefined') return;
 
-      const path = window.location.pathname;
-      const hash = window.location.hash;
+      const path = window.location.pathname.replace(/\/+$/, '');
+      const hash = window.location.hash.replace(/\/+$/, '');
       const searchParams = new URLSearchParams(window.location.search);
       const videoId = searchParams.get('v');
 
-      if (path === '/admin' || hash === '#admin') {
+      // Requirement 1 & 2: Admin dashboard must open ONLY at /admin/siba.
+      // Do NOT use /admin as the admin dashboard route.
+      if (path === '/admin/siba' || hash === '#admin/siba') {
         setIsAdminView(true);
         setActiveVideo(null);
         return;
       } else {
         setIsAdminView(false);
+      }
+
+      // If a visitor attempts to access /admin or #admin, redirect cleanly to /
+      if (path === '/admin' || hash === '#admin') {
+        window.history.replaceState({}, '', '/');
       }
 
       if (videoId) {
@@ -208,11 +215,11 @@ function MainApp() {
         onBackToSite={() => {
           setIsAdminView(false);
           if (typeof window !== 'undefined') {
-            if (window.location.pathname === '/admin') {
+            if (window.location.pathname.startsWith('/admin')) {
               window.history.pushState({}, '', '/');
             }
-            if (window.location.hash === '#admin') {
-              window.location.hash = '';
+            if (window.location.hash.startsWith('#admin')) {
+              window.history.pushState({}, '', '/');
             }
           }
           loadVideos(selectedCategory, true);
@@ -393,12 +400,6 @@ function MainApp() {
             isConnected={isConnected}
             onOpenConfig={() => setIsConfigOpen(true)}
             onSelectVideo={handleSelectVideo}
-            onNavigateToAdmin={() => {
-              setIsAdminView(true);
-              if (typeof window !== 'undefined') {
-                window.history.pushState({}, '', '/admin');
-              }
-            }}
           />
         )}
 

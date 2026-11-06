@@ -356,7 +356,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
             <span>Return to cardingx.in</span>
           </button>
           <span className="text-[11px] text-red-500 font-mono font-bold tracking-wider">
-            /admin
+            /admin/siba
           </span>
         </div>
 

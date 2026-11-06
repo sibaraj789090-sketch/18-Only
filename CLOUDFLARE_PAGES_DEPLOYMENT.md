@@ -49,7 +49,7 @@ The `public/_redirects` file has been automatically created with:
 ```text
 /*    /index.html   200
 ```
-This ensures that direct deep links (e.g. `?v=videoId` and `/admin`) resolve to the single-page application without 404 errors.
+This ensures that direct deep links (e.g. `?v=videoId` and `/admin/siba`) resolve to the single-page application without 404 errors.
 
 ---
 
