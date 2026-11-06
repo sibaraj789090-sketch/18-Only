@@ -39,9 +39,15 @@ import { useToast } from './Toast';
 
 interface AdminPanelProps {
   onBackToSite: () => void;
+  onOpenConfig?: () => void;
+  isConfigured?: boolean;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  onBackToSite,
+  onOpenConfig,
+  isConfigured = true,
+}) => {
   const { showToast } = useToast();
 
   // Authentication State
@@ -79,12 +85,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
   // Delete confirmation
   const [deletingVideoId, setDeletingVideoId] = useState<string | number | null>(null);
 
-  // 1. Check existing verified admin session
+  // 1. Check existing verified admin session with 2.5s safety timeout
   const checkAuth = useCallback(async () => {
     setIsCheckingAuth(true);
-    const user = await verifyCurrentAdminUser();
-    setCurrentUser(user);
-    setIsCheckingAuth(false);
+    try {
+      const authPromise = verifyCurrentAdminUser();
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 2500)
+      );
+      const user = await Promise.race([authPromise, timeoutPromise]);
+      setCurrentUser(user);
+    } catch (err) {
+      console.warn('Session verification notice:', err);
+      setCurrentUser(null);
+    } finally {
+      setIsCheckingAuth(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -95,16 +111,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
   const loadDashboardData = useCallback(async () => {
     if (!currentUser) return;
     setIsLoadingData(true);
-    const [vids, cats] = await Promise.all([
-      fetchAllAdminVideos(),
-      fetchCategories(),
-    ]);
-    setAdminVideos(vids);
-    setCategories(cats);
-    if (cats.length > 0 && !formCategory) {
-      setFormCategory(cats[0].name);
+    try {
+      const [vids, cats] = await Promise.all([
+        fetchAllAdminVideos(),
+        fetchCategories(),
+      ]);
+      setAdminVideos(vids);
+      setCategories(cats);
+      if (cats.length > 0 && !formCategory) {
+        setFormCategory(cats[0].name);
+      }
+    } catch (e) {
+      console.warn('Admin dashboard load warning:', e);
+    } finally {
+      setIsLoadingData(false);
     }
-    setIsLoadingData(false);
   }, [currentUser, formCategory]);
 
   useEffect(() => {
@@ -362,16 +383,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
 
         {/* Secure Sign-in Card */}
         <div className="my-auto py-6">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-red-950 to-slate-900 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto mb-4 shadow-xl shadow-red-950/40">
-            <Lock className="w-7 h-7" />
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-red-950 to-slate-900 border border-red-500/30 flex items-center justify-center text-red-500 mx-auto mb-4 shadow-xl shadow-red-950/40">
+            <Lock className="w-8 h-8" />
           </div>
 
           <div className="text-center mb-6">
+            <div className="inline-flex items-center gap-1.5 bg-red-600/15 border border-red-500/30 px-3 py-1 rounded-full mb-2.5">
+              <span className="bg-red-600 text-white font-extrabold px-1.5 py-0.5 rounded text-[10px] leading-none">18+</span>
+              <span className="text-xs font-bold text-white tracking-wide font-['Outfit']">Cardingx Video</span>
+            </div>
             <h1 className="text-xl font-bold text-white font-['Outfit']">
-              Cardingx Administrator Portal
+              Cardingx Admin Console
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Authorized admin authentication & management
+            <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+              18+Only Video Streaming Platform Management. Authenticate with verified administrator credentials.
             </p>
           </div>
 
@@ -379,6 +404,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBackToSite }) => {
             onSubmit={handleLogin}
             className="bg-[#0e1628] rounded-2xl border border-slate-800 p-5 space-y-3.5 shadow-2xl"
           >
+            {!isConfigured && onOpenConfig && (
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center justify-between gap-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span className="leading-tight">Supabase is not configured yet.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenConfig}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] rounded-lg shrink-0 transition-colors"
+                >
+                  Setup Keys
+                </button>
+              </div>
+            )}
+
             {loginError && (
               <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-200 text-xs flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />

@@ -17,6 +17,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Google IMA SDK for HTML5 VAST ad integration -->
     <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+    <!-- Purge any legacy Service Workers or cached application shells from previous projects on this domain -->
+    <script>
+      (function() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var i = 0; i < registrations.length; i++) {
+              registrations[i].unregister();
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var i = 0; i < names.length; i++) {
+              caches.delete(names[i]);
+            }
+          });
+        }
+        try {
+          var staleKeys = [];
+          for (var j = 0; j < localStorage.length; j++) {
+            var k = localStorage.key(j);
+            if (k && (k.toLowerCase().includes('rummy') || k.toLowerCase().includes('game_') || k.toLowerCase().includes('table_'))) {
+              staleKeys.push(k);
+            }
+          }
+          staleKeys.forEach(function(k) { localStorage.removeItem(k); });
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body class="bg-[#06090e] text-[#f1f5f9] antialiased select-none overflow-x-hidden">
     <div id="root"></div>

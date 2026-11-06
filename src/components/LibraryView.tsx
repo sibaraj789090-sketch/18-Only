@@ -7,6 +7,7 @@ import {
   Trash2,
   Play,
   ChevronRight,
+  Shield,
 } from 'lucide-react';
 import { Video, SupabaseConfig } from '../types/database';
 import {
@@ -25,6 +26,7 @@ interface LibraryViewProps {
   isConnected: boolean;
   onOpenConfig: () => void;
   onSelectVideo: (video: Video) => void;
+  onOpenAdmin?: () => void;
 }
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
@@ -33,6 +35,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   isConnected,
   onOpenConfig,
   onSelectVideo,
+  onOpenAdmin,
 }) => {
   const { showToast } = useToast();
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -105,6 +108,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Cardingx Admin Portal Access Card */}
+      {onOpenAdmin && (
+        <div className="px-3 pb-1">
+          <div
+            onClick={onOpenAdmin}
+            className="bg-gradient-to-r from-red-950/40 to-slate-900/80 border border-red-900/40 hover:border-red-600/60 rounded-2xl p-3.5 cursor-pointer transition-all shadow-md flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Cardingx Admin Portal</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-red-600/30 text-red-300 border border-red-500/30">
+                    /admin/siba
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Manage videos, upload content, and edit categories
+                </p>
+              </div>
+            </div>
+
+            <ChevronRight className="w-4 h-4 text-slate-500" />
+          </div>
+        </div>
+      )}
 
       {/* Tab Switcher for History, Liked, Watch Later */}
       <div className="px-3 pt-3">

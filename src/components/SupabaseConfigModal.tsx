@@ -11,6 +11,7 @@ import {
   HelpCircle,
   ShieldCheck,
   CheckCircle2,
+  Shield,
 } from 'lucide-react';
 import { SupabaseConfig } from '../types/database';
 import {
@@ -25,6 +26,7 @@ interface SupabaseConfigModalProps {
   onClose: () => void;
   config: SupabaseConfig;
   onConfigUpdated: () => void;
+  onOpenAdmin?: () => void;
 }
 
 const SUPABASE_SCHEMA_SQL = `-- =========================================================
@@ -120,6 +122,7 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({
   onClose,
   config,
   onConfigUpdated,
+  onOpenAdmin,
 }) => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'status' | 'setup' | 'sql'>('status');
@@ -259,14 +262,30 @@ export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({
               </div>
 
               {/* Run Test Button */}
-              <button
-                onClick={handleRunDiagnostic}
-                disabled={isTesting}
-                className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-red-950 transition-all active:scale-[0.99]"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-                <span>{isTesting ? 'Testing Tables...' : 'Test Connection & Tables'}</span>
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleRunDiagnostic}
+                  disabled={isTesting}
+                  className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-red-950 transition-all active:scale-[0.99]"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                  <span>{isTesting ? 'Testing Tables...' : 'Test Connection & Tables'}</span>
+                </button>
+
+                {onOpenAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenAdmin();
+                    }}
+                    className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl flex items-center justify-center gap-2 border border-slate-700/80 transition-colors"
+                  >
+                    <Shield className="w-4 h-4 text-red-500" />
+                    <span>Open Cardingx Admin (/admin/siba)</span>
+                  </button>
+                )}
+              </div>
 
               {/* Diagnostic breakdown */}
               {testResults && (

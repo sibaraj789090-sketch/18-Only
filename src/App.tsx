@@ -64,25 +64,46 @@ function MainApp() {
     const checkUrlRoute = async () => {
       if (typeof window === 'undefined') return;
 
-      const path = window.location.pathname.replace(/\/+$/, '');
-      const hash = window.location.hash.replace(/\/+$/, '');
+      const pathLower = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      const hashLower = window.location.hash.toLowerCase().replace(/\/+$/, '');
       const searchParams = new URLSearchParams(window.location.search);
       const videoId = searchParams.get('v');
+      const routeParam = (searchParams.get('route') || searchParams.get('page') || searchParams.get('admin') || '').toLowerCase().replace(/\/+$/, '');
 
-      // Requirement 1 & 2: Admin dashboard must open ONLY at /admin/siba.
-      // Do NOT use /admin as the admin dashboard route.
-      if (path === '/admin/siba' || hash === '#admin/siba') {
+      // Requirement 1 & 2: Admin dashboard must open at /admin/siba.
+      const isAdminRoute =
+        pathLower === '/admin/siba' ||
+        pathLower.endsWith('/admin/siba') ||
+        hashLower === '#admin/siba' ||
+        hashLower === '#/admin/siba' ||
+        hashLower.endsWith('admin/siba') ||
+        routeParam === 'admin/siba' ||
+        routeParam === '/admin/siba' ||
+        routeParam === 'siba' ||
+        searchParams.get('admin') === 'siba' ||
+        searchParams.get('admin') === 'true' ||
+        searchParams.get('admin') === '1';
+
+      if (isAdminRoute) {
         setIsAdminView(true);
         setActiveVideo(null);
         return;
-      } else {
-        setIsAdminView(false);
       }
 
-      // If a visitor attempts to access /admin or #admin, redirect cleanly to /
-      if (path === '/admin' || hash === '#admin') {
-        window.history.replaceState({}, '', '/');
+      // If a visitor accesses /admin or #admin, rewrite to /admin/siba so the admin panel opens smoothly
+      if (
+        pathLower === '/admin' ||
+        pathLower.endsWith('/admin') ||
+        hashLower === '#admin' ||
+        hashLower === '#/admin'
+      ) {
+        window.history.replaceState({}, '', '/admin/siba');
+        setIsAdminView(true);
+        setActiveVideo(null);
+        return;
       }
+
+      setIsAdminView(false);
 
       if (videoId) {
         const found = await fetchVideoById(videoId);
@@ -94,7 +115,19 @@ function MainApp() {
 
     checkUrlRoute();
     window.addEventListener('popstate', checkUrlRoute);
-    return () => window.removeEventListener('popstate', checkUrlRoute);
+    window.addEventListener('hashchange', checkUrlRoute);
+    return () => {
+      window.removeEventListener('popstate', checkUrlRoute);
+      window.removeEventListener('hashchange', checkUrlRoute);
+    };
+  }, []);
+
+  const handleOpenAdmin = useCallback(() => {
+    setIsAdminView(true);
+    setActiveVideo(null);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/admin/siba');
+    }
   }, []);
 
   // Update URL search params when activeVideo changes
@@ -215,15 +248,17 @@ function MainApp() {
         onBackToSite={() => {
           setIsAdminView(false);
           if (typeof window !== 'undefined') {
-            if (window.location.pathname.startsWith('/admin')) {
+            if (window.location.pathname.includes('/admin')) {
               window.history.pushState({}, '', '/');
             }
-            if (window.location.hash.startsWith('#admin')) {
+            if (window.location.hash.includes('admin')) {
               window.history.pushState({}, '', '/');
             }
           }
           loadVideos(selectedCategory, true);
         }}
+        onOpenConfig={() => setIsConfigOpen(true)}
+        isConfigured={config.isConfigured}
       />
     );
   }
@@ -400,6 +435,7 @@ function MainApp() {
             isConnected={isConnected}
             onOpenConfig={() => setIsConfigOpen(true)}
             onSelectVideo={handleSelectVideo}
+            onOpenAdmin={handleOpenAdmin}
           />
         )}
 
@@ -415,6 +451,7 @@ function MainApp() {
             initSupabase();
             loadVideos(selectedCategory, true);
           }}
+          onOpenAdmin={handleOpenAdmin}
         />
 
         {/* Share Video Modal */}

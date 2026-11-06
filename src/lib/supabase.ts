@@ -15,35 +15,64 @@ export const DEFAULT_CATEGORIES: Category[] = [
 const STORAGE_KEY_URL = '18plus_supabase_url';
 const STORAGE_KEY_ANON = '18plus_supabase_anon_key';
 
+function isValidHttpUrl(string?: string | null): boolean {
+  if (!string) return false;
+  const trimmed = string.trim();
+  if (
+    trimmed.includes('your-project') ||
+    trimmed.includes('xyzcompany') ||
+    trimmed.includes('example.supabase.co') ||
+    trimmed.includes('placeholder')
+  ) {
+    return false;
+  }
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isValidAnonKey(key?: string | null): boolean {
+  if (!key) return false;
+  const trimmed = key.trim();
+  return (
+    trimmed.length > 20 &&
+    !trimmed.includes('your-anon-key') &&
+    !trimmed.includes('placeholder')
+  );
+}
+
 export function getSupabaseCredentials(): SupabaseConfig {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const envUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-  const localUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_URL) || '' : '';
-  const localKey = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ANON) || '' : '';
+  const localUrl = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY_URL) || '').trim() : '';
+  const localKey = typeof window !== 'undefined' ? (localStorage.getItem(STORAGE_KEY_ANON) || '').trim() : '';
 
-  if (envUrl && envKey && !envUrl.includes('your-project')) {
+  if (isValidHttpUrl(envUrl) && isValidAnonKey(envKey)) {
     return {
-      url: envUrl.trim(),
-      anonKey: envKey.trim(),
+      url: envUrl,
+      anonKey: envKey,
       isConfigured: true,
       source: 'env',
     };
   }
 
-  if (localUrl && localKey) {
+  if (isValidHttpUrl(localUrl) && isValidAnonKey(localKey)) {
     return {
-      url: localUrl.trim(),
-      anonKey: localKey.trim(),
+      url: localUrl,
+      anonKey: localKey,
       isConfigured: true,
       source: 'localStorage',
     };
   }
 
   return {
-    url: envUrl || '',
-    anonKey: envKey || '',
-    isConfigured: Boolean(envUrl && envKey && !envUrl.includes('your-project')),
+    url: envUrl || localUrl || '',
+    anonKey: envKey || localKey || '',
+    isConfigured: false,
     source: 'none',
   };
 }
@@ -68,7 +97,7 @@ let supabaseClientInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
   const creds = getSupabaseCredentials();
-  if (!creds.url || !creds.anonKey) {
+  if (!creds.isConfigured || !creds.url || !creds.anonKey) {
     return null;
   }
 
@@ -81,7 +110,7 @@ export function getSupabaseClient(): SupabaseClient | null {
         },
       });
     } catch (err) {
-      console.error('Failed to initialize Supabase client:', err);
+      console.warn('Could not initialize Supabase client:', err);
       return null;
     }
   }
@@ -231,7 +260,7 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
           return { videos: retryResult.data as Video[], count: retryResult.count ?? retryResult.data.length };
         }
       }
-      console.error('Error fetching videos from Supabase:', error.message);
+      console.warn('Notice: Supabase videos query returned:', error.message);
       return { videos: [], count: 0 };
     }
 
@@ -240,7 +269,7 @@ export async function fetchVideos(options: FetchVideosOptions = {}): Promise<{ v
       count: count ?? (data?.length || 0),
     };
   } catch (err) {
-    console.error('Unexpected error fetching videos:', err);
+    console.warn('Notice: Network error fetching videos from Supabase:', err);
     return { videos: [], count: 0 };
   }
 }
@@ -272,7 +301,7 @@ export async function fetchVideoById(id: string | number): Promise<Video | null>
 
     return data as Video;
   } catch (err) {
-    console.error('Error fetching video by ID:', err);
+    console.warn('Notice: fetchVideoById error:', err);
     return null;
   }
 }
@@ -695,7 +724,7 @@ export async function fetchAllAdminVideos(): Promise<Video[]> {
 
     return data as Video[];
   } catch (err) {
-    console.error('Error in fetchAllAdminVideos:', err);
+    console.warn('Notice: fetchAllAdminVideos error:', err);
     return [];
   }
 }
